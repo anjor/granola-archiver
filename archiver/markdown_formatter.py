@@ -79,7 +79,7 @@ archived_at: {datetime.now().isoformat()}"""
             body += f"\n**Attendees**: {attendees_list}"
 
         # Add overview if available
-        overview = metadata.get('overview') or document.get('overview')
+        overview = metadata.get('overview') or getattr(document, 'overview', None)
         if overview:
             body += f"""
 
