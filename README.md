@@ -55,10 +55,10 @@ uv sync
 
 ```bash
 # From local path
-uv pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv add --editable /Users/anjor/repos/anjor/granola-py-client
 
 # Or if published to PyPI
-# uv pip install granola-client
+# uv add granola-client
 ```
 
 ### 4. Create archive repository
@@ -300,7 +300,7 @@ The archive repository path in `config.yaml` must point to an existing git repos
 Install granola-py-client:
 
 ```bash
-uv pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv add --editable /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ### "Authentication failed"

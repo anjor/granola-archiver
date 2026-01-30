@@ -21,7 +21,7 @@ cd /Users/anjor/repos/anjor/granola-archiver
 uv sync
 
 # Install granola-py-client
-uv pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv add --editable /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ## Step 2: Create Archive Repository
@@ -114,7 +114,7 @@ tail -f /tmp/granola-archiver.log
 
 ### "granola-client not found"
 ```bash
-uv pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv add --editable /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ### "Repository path does not exist"

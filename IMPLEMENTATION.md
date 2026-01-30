@@ -222,7 +222,7 @@ All dependencies from the plan are specified in `pyproject.toml` and managed by 
 ## Known Issues / Limitations
 
 1. **Granola client dependency**: Must be installed separately from local path
-   - Fix: Install with `uv pip install -e /Users/anjor/repos/anjor/granola-py-client`
+   - Fix: Install with `uv add --editable /Users/anjor/repos/anjor/granola-py-client`
 
 2. **Archive repo must exist**: User must create and clone the archive repository first
    - This is by design - documented in QUICKSTART.md

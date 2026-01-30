@@ -61,17 +61,17 @@ def main():
         check_item(
             "granola-client installed",
             False,
-            "uv pip install -e /Users/anjor/repos/anjor/granola-py-client"
+            "uv add --editable /Users/anjor/repos/anjor/granola-py-client"
         )
 
     # Check dependencies
     deps_to_check = [
-        ("httpx", "uv pip install httpx"),
-        ("pydantic", "uv pip install pydantic"),
-        ("yaml", "uv pip install pyyaml"),
-        ("git", "uv pip install gitpython"),
-        ("dotenv", "uv pip install python-dotenv"),
-        ("rich", "uv pip install rich"),
+        ("httpx", "uv add httpx"),
+        ("pydantic", "uv add pydantic"),
+        ("yaml", "uv add pyyaml"),
+        ("git", "uv add gitpython"),
+        ("dotenv", "uv add python-dotenv"),
+        ("rich", "uv add rich"),
     ]
 
     for module_name, install_cmd in deps_to_check:
