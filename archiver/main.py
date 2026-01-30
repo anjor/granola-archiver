@@ -1,0 +1,345 @@
+"""Main orchestrator for the Granola archiver."""
+
+import argparse
+import asyncio
+import logging
+import os
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
+
+import yaml
+from dotenv import load_dotenv
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.table import Table
+
+from .models import ArchiverConfig, ArchiveResult, ArchiveSummary
+from .state_tracker import StateTracker
+from .granola_fetcher import GranolaFetcher
+from .markdown_formatter import MarkdownFormatter
+from .git_manager import GitManager
+
+# Load environment variables
+load_dotenv()
+
+console = Console()
+
+
+def setup_logging(config: ArchiverConfig):
+    """Setup logging configuration."""
+    log_level = getattr(logging, config.logging.level.upper(), logging.INFO)
+
+    # Create log directory if needed
+    log_file = Path(config.logging.file)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Configure logging
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            RichHandler(console=console, rich_tracebacks=True),
+            logging.FileHandler(config.logging.file)
+        ]
+    )
+
+
+def load_config(config_path: str = "config.yaml") -> ArchiverConfig:
+    """Load configuration from YAML file.
+
+    Args:
+        config_path: Path to configuration file
+
+    Returns:
+        ArchiverConfig object
+    """
+    config_file = Path(config_path)
+    if not config_file.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+    with open(config_file, 'r') as f:
+        config_dict = yaml.safe_load(f)
+
+    return ArchiverConfig(**config_dict)
+
+
+async def archive_document(
+    document,
+    granola_fetcher: GranolaFetcher,
+    formatter: MarkdownFormatter,
+    git_manager: GitManager,
+    state_tracker: StateTracker,
+    dry_run: bool = False
+) -> ArchiveResult:
+    """Archive a single document.
+
+    Args:
+        document: The document to archive
+        granola_fetcher: Granola API client
+        formatter: Markdown formatter
+        git_manager: Git manager
+        state_tracker: State tracker
+        dry_run: If True, don't actually commit or update state
+
+    Returns:
+        ArchiveResult with success/failure info
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Fetch full document details
+        logger.info(f"Fetching details for {document.id}")
+        details = await granola_fetcher.fetch_document_details(document.id)
+
+        # Generate markdown
+        markdown = formatter.format_document(
+            details.document,
+            details.transcript,
+            details.metadata
+        )
+
+        # Compute file path
+        file_path = formatter.compute_file_path(document)
+
+        if dry_run:
+            console.print(f"[yellow]DRY RUN: Would archive to {file_path}[/yellow]")
+            return ArchiveResult(
+                success=True,
+                doc_id=document.id,
+                file_path=file_path
+            )
+
+        # Write and commit
+        commit_message = f"""Archive: {document.title}
+
+Document ID: {document.id}
+Date: {document.created_at.strftime('%Y-%m-%d')}
+"""
+        commit_sha = git_manager.write_and_commit(
+            file_path,
+            markdown,
+            commit_message
+        )
+
+        if not commit_sha:
+            raise Exception("Failed to commit document")
+
+        # Track success
+        state_tracker.mark_archived(
+            document_id=document.id,
+            title=document.title,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+            file_path=file_path,
+            commit_sha=commit_sha
+        )
+
+        logger.info(f"Successfully archived {document.id} to {file_path}")
+        return ArchiveResult(
+            success=True,
+            doc_id=document.id,
+            file_path=file_path,
+            commit_sha=commit_sha
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to archive {document.id}: {e}", exc_info=True)
+        return ArchiveResult(
+            success=False,
+            doc_id=document.id,
+            error=str(e)
+        )
+
+
+async def run_archiver(
+    config: ArchiverConfig,
+    dry_run: bool = False,
+    document_id: Optional[str] = None
+) -> ArchiveSummary:
+    """Run the archiver.
+
+    Args:
+        config: Archiver configuration
+        dry_run: If True, don't actually commit or update state
+        document_id: If provided, only archive this specific document
+
+    Returns:
+        ArchiveSummary with results
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Starting archiver run")
+
+    # Initialize components
+    token = os.getenv(config.granola.token_env) if not config.granola.auto_detect_token else None
+    granola_fetcher = GranolaFetcher(token=token)
+    state_tracker = StateTracker('state/archive_state.db')
+    git_manager = GitManager(
+        config.archive.repo_path,
+        config.archive.remote_name,
+        config.archive.default_branch
+    )
+    formatter = MarkdownFormatter()
+
+    # Ensure git repo is up to date (unless dry run)
+    if not dry_run:
+        git_manager.ensure_up_to_date()
+
+    # Fetch documents
+    if document_id:
+        # Archive specific document
+        logger.info(f"Archiving specific document: {document_id}")
+        doc = await granola_fetcher.fetch_document_details(document_id)
+        documents = [doc.document]
+    else:
+        # Get last run timestamp
+        last_run = state_tracker.get_last_run_timestamp()
+        if not last_run:
+            # First run - look back configured hours
+            lookback = timedelta(hours=config.polling.lookback_hours)
+            last_run = datetime.now() - lookback
+            logger.info(f"First run - looking back {config.polling.lookback_hours} hours")
+
+        # Fetch documents
+        workspace_ids = config.filters.workspace_ids if config.filters.workspace_ids else None
+        documents = await granola_fetcher.fetch_new_documents(
+            since=last_run,
+            workspace_ids=workspace_ids
+        )
+
+    # Process documents
+    results = []
+    skipped_count = 0
+
+    for doc in documents:
+        # Check if already archived with same update time
+        if state_tracker.is_archived(doc.id, doc.updated_at):
+            logger.info(f"Skipping {doc.id} - already archived")
+            skipped_count += 1
+            continue
+
+        # Apply duration filter if configured
+        if config.filters.min_duration_minutes > 0:
+            duration = getattr(doc, 'duration_minutes', 0)
+            if duration < config.filters.min_duration_minutes:
+                logger.info(f"Skipping {doc.id} - too short ({duration} min)")
+                skipped_count += 1
+                continue
+
+        # Archive document
+        result = await archive_document(
+            doc,
+            granola_fetcher,
+            formatter,
+            git_manager,
+            state_tracker,
+            dry_run
+        )
+        results.append(result)
+
+    # Push commits (unless dry run)
+    if not dry_run and any(r.success for r in results):
+        success = git_manager.push_to_remote()
+        if not success:
+            logger.warning("Failed to push commits to remote")
+
+    # Update run statistics
+    if not dry_run:
+        archived_count = sum(1 for r in results if r.success)
+        failed_count = sum(1 for r in results if not r.success)
+        state_tracker.update_last_run(
+            documents_processed=len(documents),
+            documents_archived=archived_count,
+            documents_failed=failed_count
+        )
+
+    # Build summary
+    summary = ArchiveSummary(
+        total_documents=len(documents),
+        archived_count=sum(1 for r in results if r.success),
+        failed_count=sum(1 for r in results if not r.success),
+        skipped_count=skipped_count,
+        results=results
+    )
+
+    logger.info(
+        f"Archiver run complete: {summary.archived_count} archived, "
+        f"{summary.failed_count} failed, {summary.skipped_count} skipped"
+    )
+
+    return summary
+
+
+def print_summary(summary: ArchiveSummary):
+    """Print a summary table of the archive run."""
+    table = Table(title="Archive Summary")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Count", style="magenta")
+
+    table.add_row("Total Documents", str(summary.total_documents))
+    table.add_row("Archived", str(summary.archived_count))
+    table.add_row("Failed", str(summary.failed_count))
+    table.add_row("Skipped", str(summary.skipped_count))
+
+    console.print(table)
+
+    # Print failures if any
+    if summary.failed_count > 0:
+        console.print("\n[red]Failed Documents:[/red]")
+        for result in summary.results:
+            if not result.success:
+                console.print(f"  - {result.doc_id}: {result.error}")
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description="Archive Granola transcripts to GitHub")
+    parser.add_argument(
+        "--config",
+        default="config.yaml",
+        help="Path to configuration file (default: config.yaml)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be archived without committing"
+    )
+    parser.add_argument(
+        "--document-id",
+        help="Archive a specific document by ID"
+    )
+
+    args = parser.parse_args()
+
+    try:
+        # Load configuration
+        config = load_config(args.config)
+
+        # Setup logging
+        setup_logging(config)
+
+        # Run archiver
+        summary = asyncio.run(run_archiver(
+            config,
+            dry_run=args.dry_run,
+            document_id=args.document_id
+        ))
+
+        # Print summary
+        print_summary(summary)
+
+        # Exit with error code if any documents failed
+        sys.exit(0 if summary.failed_count == 0 else 1)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        console.print(f"[red]Fatal error: {e}[/red]")
+        logging.exception("Fatal error")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,25 @@
+# Granola API
+granola:
+  auto_detect_token: true
+  token_env: GRANOLA_TOKEN
+
+# Archive repository
+archive:
+  repo_path: /path/to/granola-transcripts
+  remote_name: origin
+  default_branch: main
+
+# Polling
+polling:
+  interval_minutes: 30
+  lookback_hours: 24  # On first run, look back this far
+
+# Filtering
+filters:
+  workspace_ids: []  # Empty = all workspaces
+  min_duration_minutes: 0  # Skip very short meetings
+
+# Logging
+logging:
+  level: INFO
+  file: /tmp/granola-archiver.log
