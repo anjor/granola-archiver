@@ -148,28 +148,37 @@ granola-archiver/
 
 To verify the implementation:
 
-1. **Check setup**:
+1. **Install uv** (if not already installed):
    ```bash
-   python scripts/verify_setup.py
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. **Run tests**:
+2. **Check setup**:
    ```bash
-   pip install -e ".[dev]"
-   pytest tests/
+   uv run python scripts/verify_setup.py
    ```
 
-3. **Dry run**:
+3. **Install dependencies**:
    ```bash
-   python -m archiver --dry-run
+   uv sync --all-extras
    ```
 
-4. **Archive documents**:
+4. **Run tests**:
    ```bash
-   python -m archiver
+   uv run pytest tests/
    ```
 
-5. **Set up automation**:
+5. **Dry run**:
+   ```bash
+   uv run archiver --dry-run
+   ```
+
+6. **Archive documents**:
+   ```bash
+   uv run archiver
+   ```
+
+7. **Set up automation**:
    ```bash
    ./scripts/setup_launchd.sh
    ```
@@ -188,7 +197,10 @@ This was explicitly marked as "Phase 3: Enhancement (Optional)" in the plan.
 
 ## Dependencies
 
-All dependencies from the plan are specified in `pyproject.toml`:
+All dependencies from the plan are specified in `pyproject.toml` and managed by **uv**:
+
+**Package Manager:**
+- uv (fast Python package manager)
 
 **Runtime:**
 - httpx >= 0.25.0 (HTTP client)
@@ -210,7 +222,7 @@ All dependencies from the plan are specified in `pyproject.toml`:
 ## Known Issues / Limitations
 
 1. **Granola client dependency**: Must be installed separately from local path
-   - Fix: Install with `pip install -e /Users/anjor/repos/anjor/granola-py-client`
+   - Fix: Install with `uv pip install -e /Users/anjor/repos/anjor/granola-py-client`
 
 2. **Archive repo must exist**: User must create and clone the archive repository first
    - This is by design - documented in QUICKSTART.md

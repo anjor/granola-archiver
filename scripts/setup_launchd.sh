@@ -10,9 +10,13 @@ PLIST_FILE="$HOME/Library/LaunchAgents/com.granola.archiver.plist"
 echo "Setting up Granola archiver launchd job..."
 echo "Project directory: $PROJECT_DIR"
 
-# Detect Python path
-PYTHON_PATH=$(which python3)
-echo "Python path: $PYTHON_PATH"
+# Detect uv path
+UV_PATH=$(which uv)
+if [ -z "$UV_PATH" ]; then
+    echo "Error: uv not found. Install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    exit 1
+fi
+echo "uv path: $UV_PATH"
 
 # Create plist file
 cat > "$PLIST_FILE" << EOF
@@ -25,8 +29,8 @@ cat > "$PLIST_FILE" << EOF
     <string>com.granola.archiver</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$PYTHON_PATH</string>
-        <string>-m</string>
+        <string>$UV_PATH</string>
+        <string>run</string>
         <string>archiver</string>
     </array>
     <key>WorkingDirectory</key>

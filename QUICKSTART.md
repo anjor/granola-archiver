@@ -5,19 +5,23 @@ Get the Granola archiver up and running in 5 minutes.
 ## Prerequisites
 
 - Python 3.13+
+- uv (fast Python package manager)
 - Granola API credentials (in `~/.granola/credentials.json`)
 - Git and GitHub account
 
 ## Step 1: Install
 
 ```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 cd /Users/anjor/repos/anjor/granola-archiver
 
 # Install dependencies
-pip install -e .
+uv sync
 
 # Install granola-py-client
-pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv pip install -e /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ## Step 2: Create Archive Repository
@@ -56,10 +60,10 @@ archive:
 
 ```bash
 # Dry run to see what would be archived
-python -m archiver --dry-run
+uv run archiver --dry-run
 
 # Archive documents for real
-python -m archiver
+uv run archiver
 ```
 
 You should see output like:
@@ -110,7 +114,7 @@ tail -f /tmp/granola-archiver.log
 
 ### "granola-client not found"
 ```bash
-pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv pip install -e /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ### "Repository path does not exist"

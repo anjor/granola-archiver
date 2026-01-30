@@ -32,29 +32,36 @@ granola-archiver/
 ## Prerequisites
 
 1. **Python 3.13+**
-2. **Granola API access**: The archiver uses [granola-py-client](https://github.com/anjor/granola-py-client)
-3. **Git repository**: A separate GitHub repository for storing archives
+2. **uv**: Fast Python package manager - [Install uv](https://github.com/astral-sh/uv)
+3. **Granola API access**: The archiver uses [granola-py-client](https://github.com/anjor/granola-py-client)
+4. **Git repository**: A separate GitHub repository for storing archives
 
 ## Installation
 
-### 1. Install the archiver
+### 1. Install uv (if not already installed)
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+### 2. Install the archiver
 
 ```bash
 cd /Users/anjor/repos/anjor/granola-archiver
-pip install -e .
+uv sync
 ```
 
-### 2. Install granola-py-client
+### 3. Install granola-py-client
 
 ```bash
 # From local path
-pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv pip install -e /Users/anjor/repos/anjor/granola-py-client
 
 # Or if published to PyPI
-# pip install granola-client
+# uv pip install granola-client
 ```
 
-### 3. Create archive repository
+### 4. Create archive repository
 
 Create a new GitHub repository for storing transcripts:
 
@@ -71,7 +78,7 @@ git commit -m "Initial commit"
 git push origin main
 ```
 
-### 4. Configure the archiver
+### 5. Configure the archiver
 
 Copy the example configuration and update paths:
 
@@ -110,16 +117,16 @@ logging:
 
 ```bash
 # Normal run - archive new documents
-python -m archiver
+uv run archiver
 
 # Dry run - preview what would be archived
-python -m archiver --dry-run
+uv run archiver --dry-run
 
 # Archive a specific document
-python -m archiver --document-id doc_abc123
+uv run archiver --document-id doc_abc123
 
 # Use custom config file
-python -m archiver --config /path/to/config.yaml
+uv run archiver --config /path/to/config.yaml
 ```
 
 ### Automatic Execution (macOS)
@@ -293,7 +300,7 @@ The archive repository path in `config.yaml` must point to an existing git repos
 Install granola-py-client:
 
 ```bash
-pip install -e /Users/anjor/repos/anjor/granola-py-client
+uv pip install -e /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ### "Authentication failed"
@@ -319,15 +326,15 @@ tail -f /tmp/granola-archiver.error.log
 ### Running tests
 
 ```bash
-pip install -e ".[dev]"
-pytest
+uv sync --all-extras
+uv run pytest
 ```
 
 ### Code formatting
 
 ```bash
-black archiver/
-ruff check archiver/
+uv run black archiver/
+uv run ruff check archiver/
 ```
 
 ## Future Enhancements

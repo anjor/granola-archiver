@@ -38,6 +38,19 @@ def main():
 
     print()
 
+    # Check uv installation
+    total_checks += 1
+    import shutil
+    uv_path = shutil.which("uv")
+    if check_item(
+        "uv installed",
+        uv_path is not None,
+        "curl -LsSf https://astral.sh/uv/install.sh | sh"
+    ):
+        checks_passed += 1
+
+    print()
+
     # Check granola-client
     total_checks += 1
     try:
@@ -48,17 +61,17 @@ def main():
         check_item(
             "granola-client installed",
             False,
-            "pip install -e /Users/anjor/repos/anjor/granola-py-client"
+            "uv pip install -e /Users/anjor/repos/anjor/granola-py-client"
         )
 
     # Check dependencies
     deps_to_check = [
-        ("httpx", "pip install httpx"),
-        ("pydantic", "pip install pydantic"),
-        ("yaml", "pip install pyyaml"),
-        ("git", "pip install gitpython"),
-        ("dotenv", "pip install python-dotenv"),
-        ("rich", "pip install rich"),
+        ("httpx", "uv pip install httpx"),
+        ("pydantic", "uv pip install pydantic"),
+        ("yaml", "uv pip install pyyaml"),
+        ("git", "uv pip install gitpython"),
+        ("dotenv", "uv pip install python-dotenv"),
+        ("rich", "uv pip install rich"),
     ]
 
     for module_name, install_cmd in deps_to_check:
@@ -125,10 +138,11 @@ def main():
 
     if checks_passed == total_checks:
         print("✓ All checks passed! You're ready to run:")
-        print("  python -m archiver --dry-run")
+        print("  uv run archiver --dry-run")
         return 0
     else:
         print("✗ Some checks failed. Please fix the issues above.")
+        print("\nQuick fix: Run 'uv sync' to install all dependencies")
         return 1
 
 
