@@ -12,7 +12,7 @@ try:
 except ImportError:
     raise ImportError(
         "granola-client not found. Install with: "
-        "pip install -e /Users/anjor/repos/anjor/granola-py-client"
+        "uv pip install -e /Users/anjor/repos/anjor/granola-py-client"
     )
 
 logger = logging.getLogger(__name__)

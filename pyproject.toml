@@ -12,6 +12,9 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.scripts]
+archiver = "archiver.main:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
