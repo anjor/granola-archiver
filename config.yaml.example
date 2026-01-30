@@ -1,0 +1,47 @@
+# Granola Transcript Archiver Configuration
+# Copy this file to config.yaml and customize for your setup
+
+# Granola API Configuration
+granola:
+  # Auto-detect token from ~/.granola/credentials.json
+  auto_detect_token: true
+  # Or set GRANOLA_TOKEN environment variable
+  token_env: GRANOLA_TOKEN
+
+# Archive Repository Settings
+archive:
+  # REQUIRED: Path to your archive git repository
+  # Example: /Users/username/repos/granola-transcripts
+  repo_path: /path/to/granola-transcripts
+
+  # Git remote name (usually "origin")
+  remote_name: origin
+
+  # Default branch to commit to
+  default_branch: main
+
+# Polling Settings
+polling:
+  # How often the archiver runs (used in launchd setup)
+  interval_minutes: 30
+
+  # On first run, how far back to look for documents
+  lookback_hours: 24
+
+# Document Filters
+filters:
+  # Filter by workspace IDs (empty = all workspaces)
+  # Example: ["ws_abc123", "ws_def456"]
+  workspace_ids: []
+
+  # Skip meetings shorter than this duration (in minutes)
+  # Set to 0 to archive all meetings
+  min_duration_minutes: 0
+
+# Logging Configuration
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR
+  level: INFO
+
+  # Log file location
+  file: /tmp/granola-archiver.log
