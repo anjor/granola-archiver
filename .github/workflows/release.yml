@@ -51,8 +51,13 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           git add pyproject.toml archiver/__init__.py
-          git commit -m "Bump version to ${VERSION}"
-          git push
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "Version already set to ${VERSION}, skipping commit"
+          else
+            git commit -m "Bump version to ${VERSION}"
+            git push
+          fi
 
       - name: Create and push tag
         run: |
