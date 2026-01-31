@@ -15,13 +15,10 @@ Get the Granola archiver up and running in 5 minutes.
 # Install uv if not already installed
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-cd /Users/anjor/repos/anjor/granola-archiver
+cd granola-archiver
 
-# Install dependencies
+# Install dependencies (includes granola-client from PyPI)
 uv sync
-
-# Install granola-py-client
-uv add --editable /Users/anjor/repos/anjor/granola-py-client
 ```
 
 ## Step 2: Create Archive Repository
@@ -44,8 +41,6 @@ git push origin main
 ## Step 3: Configure
 
 ```bash
-cd /Users/anjor/repos/anjor/granola-archiver
-
 # Edit config.yaml and update the repo_path
 nano config.yaml
 ```
@@ -106,7 +101,6 @@ You should see files organized like:
 ## Step 5: Set Up Automation (Optional)
 
 ```bash
-cd /Users/anjor/repos/anjor/granola-archiver
 ./scripts/setup_launchd.sh
 ```
 
@@ -126,7 +120,7 @@ tail -f /tmp/granola-archiver.log
 
 ### "granola-client not found"
 ```bash
-uv add --editable /Users/anjor/repos/anjor/granola-py-client
+uv sync
 ```
 
 ### "Repository path does not exist"

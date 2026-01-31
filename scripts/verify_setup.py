@@ -61,7 +61,7 @@ def main():
         check_item(
             "granola-client installed",
             False,
-            "uv add --editable /Users/anjor/repos/anjor/granola-py-client"
+            "uv sync"
         )
 
     # Check dependencies

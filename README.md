@@ -47,19 +47,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### 2. Install the archiver
 
 ```bash
-cd /Users/anjor/repos/anjor/granola-archiver
+cd granola-archiver
 uv sync
 ```
 
-### 3. Install granola-py-client
-
-```bash
-# From local path
-uv add --editable /Users/anjor/repos/anjor/granola-py-client
-
-# Or if published to PyPI
-# uv add granola-client
-```
+The granola-client dependency will be installed automatically from PyPI.
 
 ### 4. Create archive repository
 
@@ -309,10 +301,10 @@ The archive repository path in `config.yaml` must point to an existing git repos
 
 ### "granola-client not found"
 
-Install granola-py-client:
+Reinstall dependencies:
 
 ```bash
-uv add --editable /Users/anjor/repos/anjor/granola-py-client
+uv sync
 ```
 
 ### "Authentication failed"

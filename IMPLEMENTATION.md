@@ -1,6 +1,6 @@
 # Implementation Summary
 
-This document summarizes the implementation of the Granola Transcript Archiver based on the plan in `/Users/anjor/.claude/projects/-Users-anjor-repos-anjor-granola-archiver/23b46fae-3154-4037-af84-6bb41169b2f7.jsonl`.
+This document summarizes the implementation of the Granola Transcript Archiver.
 
 ## Status: ✅ Complete
 
@@ -221,8 +221,7 @@ All dependencies from the plan are specified in `pyproject.toml` and managed by 
 
 ## Known Issues / Limitations
 
-1. **Granola client dependency**: Must be installed separately from local path
-   - Fix: Install with `uv add --editable /Users/anjor/repos/anjor/granola-py-client`
+1. **Granola client dependency**: Installed automatically from PyPI via `uv sync`
 
 2. **Archive repo must exist**: User must create and clone the archive repository first
    - This is by design - documented in QUICKSTART.md
@@ -273,4 +272,3 @@ The implementation is complete and ready for:
 ---
 
 *Generated: 2026-01-30*
-*Implementation follows plan from session 23b46fae-3154-4037-af84-6bb41169b2f7*
