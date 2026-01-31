@@ -7,12 +7,10 @@ from typing import List, Optional
 from pathlib import Path
 
 try:
-    from granola_client import GranolaClient
-    from granola_client.models import Document
+    from granola_client import GranolaClient, Document
 except ImportError:
     raise ImportError(
-        "granola-client not found. Install with: "
-        "uv add --editable /Users/anjor/repos/anjor/granola-py-client"
+        "granola-client not found. Install with: uv add granola-client"
     )
 
 logger = logging.getLogger(__name__)
