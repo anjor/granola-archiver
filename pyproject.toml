@@ -2,7 +2,18 @@
 name = "granola-archiver"
 version = "0.1.0"
 description = "Automated system to archive Granola meeting transcripts to GitHub"
+authors = [
+    { name = "Anjor Kanekar" },
+]
+readme = "README.md"
 requires-python = ">=3.13"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+]
 dependencies = [
     "httpx>=0.25.0",
     "pydantic>=2.0",
@@ -38,6 +49,10 @@ dev = [
     "black>=23.0",
     "ruff>=0.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/anjor/granola-archiver"
+Repository = "https://github.com/anjor/granola-archiver"
 
 [tool.black]
 line-length = 100
