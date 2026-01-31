@@ -156,7 +156,9 @@ Date: {document.created_at.strftime('%Y-%m-%d')}
 async def run_archiver(
     config: ArchiverConfig,
     dry_run: bool = False,
-    document_id: Optional[str] = None
+    document_id: Optional[str] = None,
+    backfill: bool = False,
+    since_date: Optional[str] = None
 ) -> ArchiveSummary:
     """Run the archiver.
 
@@ -164,6 +166,8 @@ async def run_archiver(
         config: Archiver configuration
         dry_run: If True, don't actually commit or update state
         document_id: If provided, only archive this specific document
+        backfill: If True, fetch ALL documents regardless of last run timestamp
+        since_date: If provided, fetch documents updated since this date (ISO format)
 
     Returns:
         ArchiveSummary with results
@@ -193,18 +197,34 @@ async def run_archiver(
         doc = await granola_fetcher.fetch_document_details(document_id)
         documents = [doc.document]
     else:
-        # Get last run timestamp
-        last_run = state_tracker.get_last_run_timestamp()
-        if not last_run:
-            # First run - look back configured hours
-            lookback = timedelta(hours=config.polling.lookback_hours)
-            last_run = datetime.now() - lookback
-            logger.info(f"First run - looking back {config.polling.lookback_hours} hours")
+        # Determine the 'since' timestamp
+        if backfill:
+            # Backfill mode: fetch ALL documents
+            logger.info("Backfill mode - fetching ALL documents from Granola")
+            fetch_since = None
+        elif since_date:
+            # Use provided custom date
+            try:
+                fetch_since = datetime.fromisoformat(since_date)
+                logger.info(f"Fetching documents since {fetch_since}")
+            except ValueError:
+                raise ValueError(
+                    f"Invalid date format: {since_date}. "
+                    "Use ISO format (e.g., 2024-01-01 or 2024-01-01T10:00:00)"
+                )
+        else:
+            # Normal mode: use last run timestamp
+            fetch_since = state_tracker.get_last_run_timestamp()
+            if not fetch_since:
+                # First run - look back configured hours
+                lookback = timedelta(hours=config.polling.lookback_hours)
+                fetch_since = datetime.now() - lookback
+                logger.info(f"First run - looking back {config.polling.lookback_hours} hours")
 
         # Fetch documents
         workspace_ids = config.filters.workspace_ids if config.filters.workspace_ids else None
         documents = await granola_fetcher.fetch_new_documents(
-            since=last_run,
+            since=fetch_since,
             workspace_ids=workspace_ids
         )
 
@@ -309,6 +329,16 @@ def main():
         "--document-id",
         help="Archive a specific document by ID"
     )
+    parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Fetch ALL documents regardless of last run timestamp (skips already-archived)"
+    )
+    parser.add_argument(
+        "--since",
+        type=str,
+        help="Fetch documents updated since this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)"
+    )
 
     args = parser.parse_args()
 
@@ -323,7 +353,9 @@ def main():
         summary = asyncio.run(run_archiver(
             config,
             dry_run=args.dry_run,
-            document_id=args.document_id
+            document_id=args.document_id,
+            backfill=args.backfill,
+            since_date=args.since
         ))
 
         # Print summary

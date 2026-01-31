@@ -64,6 +64,18 @@ uv run archiver --dry-run
 
 # Archive documents for real
 uv run archiver
+
+# Backfill: archive ALL historical documents
+uv run archiver --backfill
+
+# Backfill with dry-run to preview
+uv run archiver --backfill --dry-run
+
+# Archive documents since a specific date
+uv run archiver --since 2024-01-01
+
+# Archive documents since a specific datetime
+uv run archiver --since 2024-01-01T10:00:00
 ```
 
 You should see output like:
