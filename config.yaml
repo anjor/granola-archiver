@@ -1,3 +1,14 @@
+# Granola Archiver Configuration
+#
+# This is an example/development config file.
+# For production use, run 'archiver init' to create ~/.config/granola-archiver/config.yaml
+#
+# Config search order:
+# 1. --config flag (explicit path)
+# 2. GRANOLA_ARCHIVER_CONFIG environment variable
+# 3. ~/.config/granola-archiver/config.yaml (user config)
+# 4. ./config.yaml (this file, for development)
+
 # Granola API
 granola:
   auto_detect_token: true
@@ -5,7 +16,7 @@ granola:
 
 # Archive repository
 archive:
-  repo_path: /path/to/granola-transcripts
+  repo_path: /path/to/your/notes-repo  # UPDATE THIS
   remote_name: origin
   default_branch: main
 
@@ -22,4 +33,4 @@ filters:
 # Logging
 logging:
   level: INFO
-  file: /tmp/granola-archiver.log
+  file: ~/.local/state/granola-archiver/archiver.log

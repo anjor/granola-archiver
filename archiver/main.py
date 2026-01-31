@@ -15,6 +15,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
 
+from .cli import get_user_config_path, init_config
 from .models import ArchiverConfig, ArchiveResult, ArchiveSummary
 from .state_tracker import StateTracker
 from .granola_fetcher import GranolaFetcher
@@ -46,18 +47,68 @@ def setup_logging(config: ArchiverConfig):
     )
 
 
-def load_config(config_path: str = "config.yaml") -> ArchiverConfig:
+def find_config_path(explicit_path: Optional[str] = None) -> Path:
+    """Find config file using search order.
+
+    Search order:
+    1. Explicit path from --config flag
+    2. GRANOLA_ARCHIVER_CONFIG environment variable
+    3. ~/.config/granola-archiver/config.yaml (XDG user config)
+    4. ./config.yaml (current directory, for development)
+
+    Args:
+        explicit_path: Explicit path provided via --config flag
+
+    Returns:
+        Path to the config file
+
+    Raises:
+        FileNotFoundError: If no config file is found
+    """
+    # 1. Explicit path from --config
+    if explicit_path:
+        path = Path(explicit_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Config file not found: {explicit_path}")
+        return path
+
+    # 2. Environment variable
+    env_path = os.getenv("GRANOLA_ARCHIVER_CONFIG")
+    if env_path:
+        path = Path(env_path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Config file from GRANOLA_ARCHIVER_CONFIG not found: {env_path}"
+            )
+        return path
+
+    # 3. XDG config directory
+    xdg_config = get_user_config_path()
+    if xdg_config.exists():
+        return xdg_config
+
+    # 4. Current directory
+    local_config = Path("config.yaml")
+    if local_config.exists():
+        return local_config
+
+    raise FileNotFoundError(
+        "No config file found. Run 'archiver init' to create one, "
+        "or specify with --config or GRANOLA_ARCHIVER_CONFIG"
+    )
+
+
+def load_config(config_path: Optional[str] = None) -> ArchiverConfig:
     """Load configuration from YAML file.
 
     Args:
-        config_path: Path to configuration file
+        config_path: Optional explicit path to configuration file
 
     Returns:
         ArchiverConfig object
     """
-    config_file = Path(config_path)
-    if not config_file.exists():
-        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+    config_file = find_config_path(config_path)
+    console.print(f"[dim]Using config: {config_file}[/dim]")
 
     with open(config_file, "r") as f:
         config_dict = yaml.safe_load(f)
@@ -288,9 +339,34 @@ def print_summary(summary: ArchiveSummary):
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Archive Granola transcripts to GitHub")
-    parser.add_argument(
-        "--config", default="config.yaml", help="Path to configuration file (default: config.yaml)"
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Init subcommand
+    init_parser = subparsers.add_parser(
+        "init", help="Create config file in ~/.config/granola-archiver/"
     )
+    init_parser.add_argument("--force", action="store_true", help="Overwrite existing config file")
+
+    # Run subcommand (also the default behavior)
+    run_parser = subparsers.add_parser("run", help="Run the archiver (default)")
+    run_parser.add_argument("--config", help="Path to configuration file")
+    run_parser.add_argument(
+        "--dry-run", action="store_true", help="Show what would be archived without committing"
+    )
+    run_parser.add_argument("--document-id", help="Archive a specific document by ID")
+    run_parser.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Fetch ALL documents regardless of last run timestamp (skips already-archived)",
+    )
+    run_parser.add_argument(
+        "--since",
+        type=str,
+        help="Fetch documents updated since this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
+    )
+
+    # Also allow running without subcommand for backwards compatibility
+    parser.add_argument("--config", help="Path to configuration file")
     parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be archived without committing"
     )
@@ -307,6 +383,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Handle init command
+    if args.command == "init":
+        init_config(force=args.force)
+        return
 
     try:
         # Load configuration
