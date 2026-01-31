@@ -15,12 +15,7 @@ logger = logging.getLogger(__name__)
 class GitManager:
     """Manages Git operations for the archive repository."""
 
-    def __init__(
-        self,
-        repo_path: str,
-        remote_name: str = "origin",
-        default_branch: str = "main"
-    ):
+    def __init__(self, repo_path: str, remote_name: str = "origin", default_branch: str = "main"):
         """Initialize the Git manager.
 
         Args:
@@ -59,12 +54,7 @@ class GitManager:
             logger.warning(f"Failed to update repository: {e}")
             # Continue anyway - we'll handle conflicts if they occur
 
-    def write_and_commit(
-        self,
-        file_path: str,
-        content: str,
-        commit_message: str
-    ) -> Optional[str]:
+    def write_and_commit(self, file_path: str, content: str, commit_message: str) -> Optional[str]:
         """Write a file and commit it to the repository.
 
         Args:
@@ -81,7 +71,7 @@ class GitManager:
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Write file
-            full_path.write_text(content, encoding='utf-8')
+            full_path.write_text(content, encoding="utf-8")
             logger.info(f"Wrote file: {file_path}")
 
             # Stage file
@@ -134,9 +124,11 @@ class GitManager:
             origin.fetch()
 
             # Count commits ahead
-            commits_ahead = list(self.repo.iter_commits(
-                f'{self.remote_name}/{self.default_branch}..{self.default_branch}'
-            ))
+            commits_ahead = list(
+                self.repo.iter_commits(
+                    f"{self.remote_name}/{self.default_branch}..{self.default_branch}"
+                )
+            )
             return len(commits_ahead)
 
         except Exception as e:

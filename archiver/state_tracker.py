@@ -70,7 +70,7 @@ class StateTracker:
                 SELECT updated_at FROM archived_documents
                 WHERE document_id = ?
                 """,
-                (document_id,)
+                (document_id,),
             )
             row = cursor.fetchone()
 
@@ -87,7 +87,7 @@ class StateTracker:
         created_at: datetime,
         updated_at: datetime,
         file_path: str,
-        commit_sha: Optional[str] = None
+        commit_sha: Optional[str] = None,
     ):
         """Mark a document as archived.
 
@@ -114,8 +114,8 @@ class StateTracker:
                     updated_at.isoformat(),
                     datetime.now().isoformat(),
                     file_path,
-                    commit_sha
-                )
+                    commit_sha,
+                ),
             )
             conn.commit()
             logger.info(f"Marked document {document_id} as archived at {file_path}")
@@ -128,13 +128,11 @@ class StateTracker:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT run_at FROM archive_runs
                 ORDER BY run_at DESC
                 LIMIT 1
-                """
-            )
+                """)
             row = cursor.fetchone()
 
             if row:
@@ -142,10 +140,7 @@ class StateTracker:
             return None
 
     def update_last_run(
-        self,
-        documents_processed: int = 0,
-        documents_archived: int = 0,
-        documents_failed: int = 0
+        self, documents_processed: int = 0, documents_archived: int = 0, documents_failed: int = 0
     ):
         """Update the last run timestamp and statistics.
 
@@ -166,8 +161,8 @@ class StateTracker:
                     datetime.now().isoformat(),
                     documents_processed,
                     documents_archived,
-                    documents_failed
-                )
+                    documents_failed,
+                ),
             )
             conn.commit()
             logger.info(f"Updated last run: {documents_archived}/{documents_processed} archived")

@@ -38,6 +38,7 @@ class ArchiverConfig(BaseModel):
 
 class DocumentMetadata(BaseModel):
     """Metadata for a Granola document."""
+
     document_id: str
     title: str
     created_at: datetime
@@ -47,6 +48,7 @@ class DocumentMetadata(BaseModel):
 
 class ArchiveResult(BaseModel):
     """Result of archiving a single document."""
+
     success: bool
     doc_id: str
     error: Optional[str] = None
@@ -56,6 +58,7 @@ class ArchiveResult(BaseModel):
 
 class ArchiveSummary(BaseModel):
     """Summary of an archive run."""
+
     total_documents: int
     archived_count: int
     failed_count: int
