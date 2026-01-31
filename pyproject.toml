@@ -1,6 +1,6 @@
 [project]
 name = "granola-archiver"
-version = "0.1.0"
+version = "0.2.0"
 description = "Automated system to archive Granola meeting transcripts to GitHub"
 authors = [
     { name = "Anjor Kanekar" },
