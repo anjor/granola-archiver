@@ -1,19 +1,13 @@
 """Wrapper around granola-py-client for fetching documents."""
 
-import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional
-from pathlib import Path
 
 try:
-    from granola_client import GranolaClient
-    from granola_client.models import Document
+    from granola_client import GranolaClient, Document
 except ImportError:
-    raise ImportError(
-        "granola-client not found. Install with: "
-        "uv add --editable /Users/anjor/repos/anjor/granola-py-client"
-    )
+    raise ImportError("granola-client not found. Install with: uv add granola-client")
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +39,7 @@ class GranolaFetcher:
         logger.info("Initialized Granola client")
 
     async def fetch_new_documents(
-        self,
-        since: Optional[datetime] = None,
-        workspace_ids: Optional[List[str]] = None
+        self, since: Optional[datetime] = None, workspace_ids: Optional[List[str]] = None
     ) -> List[Document]:
         """Fetch documents updated since a given timestamp.
 
@@ -65,17 +57,11 @@ class GranolaFetcher:
 
         # Filter by update time if specified
         if since:
-            all_documents = [
-                doc for doc in all_documents
-                if doc.updated_at >= since
-            ]
+            all_documents = [doc for doc in all_documents if doc.updated_at >= since]
 
         # Filter by workspace if specified
         if workspace_ids:
-            all_documents = [
-                doc for doc in all_documents
-                if doc.workspace_id in workspace_ids
-            ]
+            all_documents = [doc for doc in all_documents if doc.workspace_id in workspace_ids]
 
         logger.info(f"Found {len(all_documents)} documents matching criteria")
         return all_documents
@@ -100,8 +86,4 @@ class GranolaFetcher:
         # Get additional metadata
         metadata = await self.client.get_document_metadata(document_id)
 
-        return DocumentDetails(
-            document=document,
-            transcript=transcript,
-            metadata=metadata
-        )
+        return DocumentDetails(document=document, transcript=transcript, metadata=metadata)

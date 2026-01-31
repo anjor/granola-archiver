@@ -41,8 +41,8 @@ def setup_logging(config: ArchiverConfig):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             RichHandler(console=console, rich_tracebacks=True),
-            logging.FileHandler(config.logging.file)
-        ]
+            logging.FileHandler(config.logging.file),
+        ],
     )
 
 
@@ -59,7 +59,7 @@ def load_config(config_path: str = "config.yaml") -> ArchiverConfig:
     if not config_file.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-    with open(config_file, 'r') as f:
+    with open(config_file, "r") as f:
         config_dict = yaml.safe_load(f)
 
     return ArchiverConfig(**config_dict)
@@ -71,7 +71,7 @@ async def archive_document(
     formatter: MarkdownFormatter,
     git_manager: GitManager,
     state_tracker: StateTracker,
-    dry_run: bool = False
+    dry_run: bool = False,
 ) -> ArchiveResult:
     """Archive a single document.
 
@@ -94,22 +94,14 @@ async def archive_document(
         details = await granola_fetcher.fetch_document_details(document.id)
 
         # Generate markdown
-        markdown = formatter.format_document(
-            details.document,
-            details.transcript,
-            details.metadata
-        )
+        markdown = formatter.format_document(details.document, details.transcript, details.metadata)
 
         # Compute file path
         file_path = formatter.compute_file_path(document)
 
         if dry_run:
             console.print(f"[yellow]DRY RUN: Would archive to {file_path}[/yellow]")
-            return ArchiveResult(
-                success=True,
-                doc_id=document.id,
-                file_path=file_path
-            )
+            return ArchiveResult(success=True, doc_id=document.id, file_path=file_path)
 
         # Write and commit
         commit_message = f"""Archive: {document.title}
@@ -117,11 +109,7 @@ async def archive_document(
 Document ID: {document.id}
 Date: {document.created_at.strftime('%Y-%m-%d')}
 """
-        commit_sha = git_manager.write_and_commit(
-            file_path,
-            markdown,
-            commit_message
-        )
+        commit_sha = git_manager.write_and_commit(file_path, markdown, commit_message)
 
         if not commit_sha:
             raise Exception("Failed to commit document")
@@ -133,30 +121,25 @@ Date: {document.created_at.strftime('%Y-%m-%d')}
             created_at=document.created_at,
             updated_at=document.updated_at,
             file_path=file_path,
-            commit_sha=commit_sha
+            commit_sha=commit_sha,
         )
 
         logger.info(f"Successfully archived {document.id} to {file_path}")
         return ArchiveResult(
-            success=True,
-            doc_id=document.id,
-            file_path=file_path,
-            commit_sha=commit_sha
+            success=True, doc_id=document.id, file_path=file_path, commit_sha=commit_sha
         )
 
     except Exception as e:
         logger.error(f"Failed to archive {document.id}: {e}", exc_info=True)
-        return ArchiveResult(
-            success=False,
-            doc_id=document.id,
-            error=str(e)
-        )
+        return ArchiveResult(success=False, doc_id=document.id, error=str(e))
 
 
 async def run_archiver(
     config: ArchiverConfig,
     dry_run: bool = False,
-    document_id: Optional[str] = None
+    document_id: Optional[str] = None,
+    backfill: bool = False,
+    since_date: Optional[str] = None,
 ) -> ArchiveSummary:
     """Run the archiver.
 
@@ -164,6 +147,8 @@ async def run_archiver(
         config: Archiver configuration
         dry_run: If True, don't actually commit or update state
         document_id: If provided, only archive this specific document
+        backfill: If True, fetch ALL documents regardless of last run timestamp
+        since_date: If provided, fetch documents updated since this date (ISO format)
 
     Returns:
         ArchiveSummary with results
@@ -174,11 +159,9 @@ async def run_archiver(
     # Initialize components
     token = os.getenv(config.granola.token_env) if not config.granola.auto_detect_token else None
     granola_fetcher = GranolaFetcher(token=token)
-    state_tracker = StateTracker('state/archive_state.db')
+    state_tracker = StateTracker("state/archive_state.db")
     git_manager = GitManager(
-        config.archive.repo_path,
-        config.archive.remote_name,
-        config.archive.default_branch
+        config.archive.repo_path, config.archive.remote_name, config.archive.default_branch
     )
     formatter = MarkdownFormatter()
 
@@ -193,19 +176,34 @@ async def run_archiver(
         doc = await granola_fetcher.fetch_document_details(document_id)
         documents = [doc.document]
     else:
-        # Get last run timestamp
-        last_run = state_tracker.get_last_run_timestamp()
-        if not last_run:
-            # First run - look back configured hours
-            lookback = timedelta(hours=config.polling.lookback_hours)
-            last_run = datetime.now() - lookback
-            logger.info(f"First run - looking back {config.polling.lookback_hours} hours")
+        # Determine the 'since' timestamp
+        if backfill:
+            # Backfill mode: fetch ALL documents
+            logger.info("Backfill mode - fetching ALL documents from Granola")
+            fetch_since = None
+        elif since_date:
+            # Use provided custom date
+            try:
+                fetch_since = datetime.fromisoformat(since_date)
+                logger.info(f"Fetching documents since {fetch_since}")
+            except ValueError:
+                raise ValueError(
+                    f"Invalid date format: {since_date}. "
+                    "Use ISO format (e.g., 2024-01-01 or 2024-01-01T10:00:00)"
+                )
+        else:
+            # Normal mode: use last run timestamp
+            fetch_since = state_tracker.get_last_run_timestamp()
+            if not fetch_since:
+                # First run - look back configured hours
+                lookback = timedelta(hours=config.polling.lookback_hours)
+                fetch_since = datetime.now() - lookback
+                logger.info(f"First run - looking back {config.polling.lookback_hours} hours")
 
         # Fetch documents
         workspace_ids = config.filters.workspace_ids if config.filters.workspace_ids else None
         documents = await granola_fetcher.fetch_new_documents(
-            since=last_run,
-            workspace_ids=workspace_ids
+            since=fetch_since, workspace_ids=workspace_ids
         )
 
     # Process documents
@@ -221,7 +219,7 @@ async def run_archiver(
 
         # Apply duration filter if configured
         if config.filters.min_duration_minutes > 0:
-            duration = getattr(doc, 'duration_minutes', 0)
+            duration = getattr(doc, "duration_minutes", 0)
             if duration < config.filters.min_duration_minutes:
                 logger.info(f"Skipping {doc.id} - too short ({duration} min)")
                 skipped_count += 1
@@ -229,12 +227,7 @@ async def run_archiver(
 
         # Archive document
         result = await archive_document(
-            doc,
-            granola_fetcher,
-            formatter,
-            git_manager,
-            state_tracker,
-            dry_run
+            doc, granola_fetcher, formatter, git_manager, state_tracker, dry_run
         )
         results.append(result)
 
@@ -251,7 +244,7 @@ async def run_archiver(
         state_tracker.update_last_run(
             documents_processed=len(documents),
             documents_archived=archived_count,
-            documents_failed=failed_count
+            documents_failed=failed_count,
         )
 
     # Build summary
@@ -260,7 +253,7 @@ async def run_archiver(
         archived_count=sum(1 for r in results if r.success),
         failed_count=sum(1 for r in results if not r.success),
         skipped_count=skipped_count,
-        results=results
+        results=results,
     )
 
     logger.info(
@@ -296,18 +289,21 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Archive Granola transcripts to GitHub")
     parser.add_argument(
-        "--config",
-        default="config.yaml",
-        help="Path to configuration file (default: config.yaml)"
+        "--config", default="config.yaml", help="Path to configuration file (default: config.yaml)"
     )
     parser.add_argument(
-        "--dry-run",
+        "--dry-run", action="store_true", help="Show what would be archived without committing"
+    )
+    parser.add_argument("--document-id", help="Archive a specific document by ID")
+    parser.add_argument(
+        "--backfill",
         action="store_true",
-        help="Show what would be archived without committing"
+        help="Fetch ALL documents regardless of last run timestamp (skips already-archived)",
     )
     parser.add_argument(
-        "--document-id",
-        help="Archive a specific document by ID"
+        "--since",
+        type=str,
+        help="Fetch documents updated since this date (ISO format: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)",
     )
 
     args = parser.parse_args()
@@ -320,11 +316,15 @@ def main():
         setup_logging(config)
 
         # Run archiver
-        summary = asyncio.run(run_archiver(
-            config,
-            dry_run=args.dry_run,
-            document_id=args.document_id
-        ))
+        summary = asyncio.run(
+            run_archiver(
+                config,
+                dry_run=args.dry_run,
+                document_id=args.document_id,
+                backfill=args.backfill,
+                since_date=args.since,
+            )
+        )
 
         # Print summary
         print_summary(summary)

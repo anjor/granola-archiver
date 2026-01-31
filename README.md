@@ -127,6 +127,18 @@ uv run archiver --document-id doc_abc123
 
 # Use custom config file
 uv run archiver --config /path/to/config.yaml
+
+# Backfill: archive ALL historical documents
+uv run archiver --backfill
+
+# Backfill with dry-run to preview
+uv run archiver --backfill --dry-run
+
+# Archive documents since a specific date
+uv run archiver --since 2024-01-01
+
+# Archive documents since a specific datetime
+uv run archiver --since 2024-01-01T10:00:00
 ```
 
 ### Automatic Execution (macOS)

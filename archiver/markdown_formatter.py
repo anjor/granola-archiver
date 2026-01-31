@@ -1,7 +1,7 @@
 """Formats Granola documents as Markdown."""
 
 from datetime import datetime
-from typing import Optional, List
+from typing import List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,12 +10,7 @@ logger = logging.getLogger(__name__)
 class MarkdownFormatter:
     """Formats Granola documents as well-structured Markdown."""
 
-    def format_document(
-        self,
-        document,
-        transcript: str,
-        metadata: dict
-    ) -> str:
+    def format_document(self, document, transcript: str, metadata: dict) -> str:
         """Format a Granola document as Markdown.
 
         Args:
@@ -33,14 +28,14 @@ class MarkdownFormatter:
         created_at = document.created_at
         updated_at = document.updated_at
         document_id = document.id
-        workspace_id = getattr(document, 'workspace_id', None)
+        workspace_id = getattr(document, "workspace_id", None)
 
         # Format attendees if available
-        attendees_yaml = self._format_attendees_yaml(metadata.get('attendees', []))
-        attendees_list = self._format_attendees_list(metadata.get('attendees', []))
+        attendees_yaml = self._format_attendees_yaml(metadata.get("attendees", []))
+        attendees_list = self._format_attendees_list(metadata.get("attendees", []))
 
         # Format creator if available
-        creator = metadata.get('creator', {})
+        creator = metadata.get("creator", {})
         creator_yaml = ""
         if creator:
             creator_yaml = f"""creator:
@@ -79,7 +74,7 @@ archived_at: {datetime.now().isoformat()}"""
             body += f"\n**Attendees**: {attendees_list}"
 
         # Add overview if available
-        overview = metadata.get('overview') or getattr(document, 'overview', None)
+        overview = metadata.get("overview") or getattr(document, "overview", None)
         if overview:
             body += f"""
 
@@ -96,7 +91,7 @@ archived_at: {datetime.now().isoformat()}"""
 {self._format_transcript(transcript)}"""
 
         # Add notes if available
-        notes = metadata.get('notes_markdown') or metadata.get('notes')
+        notes = metadata.get("notes_markdown") or metadata.get("notes")
         if notes:
             body += f"""
 
@@ -120,8 +115,8 @@ archived_at: {datetime.now().isoformat()}"""
 
         yaml = "attendees:"
         for attendee in attendees:
-            name = attendee.get('name', 'Unknown')
-            email = attendee.get('email', '')
+            name = attendee.get("name", "Unknown")
+            email = attendee.get("email", "")
             yaml += f'\n  - name: "{name}"'
             if email:
                 yaml += f'\n    email: "{email}"'
@@ -133,7 +128,7 @@ archived_at: {datetime.now().isoformat()}"""
         if not attendees:
             return ""
 
-        names = [a.get('name', 'Unknown') for a in attendees]
+        names = [a.get("name", "Unknown") for a in attendees]
         return ", ".join(names)
 
     def _format_transcript(self, transcript: str) -> str:
@@ -146,7 +141,7 @@ archived_at: {datetime.now().isoformat()}"""
             Formatted transcript
         """
         # If transcript already has formatting, return as-is
-        if transcript.startswith('**[') or transcript.startswith('['):
+        if transcript.startswith("**[") or transcript.startswith("["):
             return transcript
 
         # Otherwise, wrap in a code block or return as-is
@@ -170,9 +165,9 @@ archived_at: {datetime.now().isoformat()}"""
         safe_title = self._sanitize_filename(title)
 
         # Build path: YYYY/MM/YYYY-MM-DD-title.md
-        year = created_at.strftime('%Y')
-        month = created_at.strftime('%m')
-        date_prefix = created_at.strftime('%Y-%m-%d')
+        year = created_at.strftime("%Y")
+        month = created_at.strftime("%m")
+        date_prefix = created_at.strftime("%Y-%m-%d")
         filename = f"{date_prefix}-{safe_title}.md"
 
         if base_path:
@@ -191,20 +186,20 @@ archived_at: {datetime.now().isoformat()}"""
             Sanitized filename string
         """
         # Convert to lowercase and replace spaces with hyphens
-        safe = title.lower().replace(' ', '-')
+        safe = title.lower().replace(" ", "-")
 
         # Remove unsafe characters
-        safe = ''.join(c for c in safe if c.isalnum() or c in '-_')
+        safe = "".join(c for c in safe if c.isalnum() or c in "-_")
 
         # Remove consecutive hyphens
-        while '--' in safe:
-            safe = safe.replace('--', '-')
+        while "--" in safe:
+            safe = safe.replace("--", "-")
 
         # Trim hyphens from ends
-        safe = safe.strip('-')
+        safe = safe.strip("-")
 
         # Truncate if too long
         if len(safe) > max_length:
-            safe = safe[:max_length].rstrip('-')
+            safe = safe[:max_length].rstrip("-")
 
-        return safe or 'untitled'
+        return safe or "untitled"
