@@ -10,7 +10,7 @@ dependencies = [
     "gitpython>=3.1",
     "python-dotenv>=1.0",
     "rich>=13.0",
-    "granola-client",
+    "granola-client>=0.3.0",
 ]
 
 [project.scripts]
