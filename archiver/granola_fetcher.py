@@ -62,10 +62,10 @@ class GranolaFetcher:
             # Make since timezone-aware if it isn't already
             if since.tzinfo is None:
                 from datetime import timezone
+
                 since = since.replace(tzinfo=timezone.utc)
             all_documents = [
-                doc for doc in all_documents
-                if parse_datetime(doc.updated_at) >= since
+                doc for doc in all_documents if parse_datetime(doc.updated_at) >= since
             ]
 
         # Filter by workspace if specified
@@ -93,7 +93,7 @@ class GranolaFetcher:
 
         # Get additional metadata (convert Pydantic model to dict)
         metadata_obj = await self.client.get_document_metadata(document_id)
-        metadata = metadata_obj.model_dump() if hasattr(metadata_obj, 'model_dump') else {}
+        metadata = metadata_obj.model_dump() if hasattr(metadata_obj, "model_dump") else {}
 
         return DocumentDetails(document=document, transcript=transcript, metadata=metadata)
 
@@ -111,7 +111,7 @@ class GranolaFetcher:
 
         lines = []
         for segment in segments:
-            text = segment.text if hasattr(segment, 'text') else str(segment)
+            text = segment.text if hasattr(segment, "text") else str(segment)
             lines.append(text)
 
         return "\n\n".join(lines)
