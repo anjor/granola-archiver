@@ -22,6 +22,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "rich>=13.0",
     "granola-client>=0.3.0",
+    "python-dateutil>=2.9.0.post0",
 ]
 
 [project.scripts]
