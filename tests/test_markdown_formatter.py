@@ -10,10 +10,10 @@ class MockDocument:
     """Mock document for testing."""
 
     def __init__(self, **kwargs):
-        self.id = kwargs.get('id', 'doc_123')
+        self.document_id = kwargs.get('document_id', 'doc_123')
         self.title = kwargs.get('title', 'Test Meeting')
-        self.created_at = kwargs.get('created_at', datetime(2026, 1, 30, 14, 0, 0))
-        self.updated_at = kwargs.get('updated_at', datetime(2026, 1, 30, 15, 0, 0))
+        self.created_at = kwargs.get('created_at', '2026-01-30T14:00:00Z')
+        self.updated_at = kwargs.get('updated_at', '2026-01-30T15:00:00Z')
         self.workspace_id = kwargs.get('workspace_id', 'ws_test')
 
 
@@ -54,7 +54,7 @@ def test_compute_file_path():
     formatter = MarkdownFormatter()
     doc = MockDocument(
         title="Team Standup Meeting",
-        created_at=datetime(2026, 1, 30, 14, 0, 0)
+        created_at='2026-01-30T14:00:00Z'
     )
 
     path = formatter.compute_file_path(doc)

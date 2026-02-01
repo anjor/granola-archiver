@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+from dateutil.parser import parse as parse_datetime
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.logging import RichHandler
@@ -141,8 +142,8 @@ async def archive_document(
 
     try:
         # Fetch full document details
-        logger.info(f"Fetching details for {document.id}")
-        details = await granola_fetcher.fetch_document_details(document.id)
+        logger.info(f"Fetching details for {document.document_id}")
+        details = await granola_fetcher.fetch_document_details(document)
 
         # Generate markdown
         markdown = formatter.format_document(details.document, details.transcript, details.metadata)
@@ -152,13 +153,13 @@ async def archive_document(
 
         if dry_run:
             console.print(f"[yellow]DRY RUN: Would archive to {file_path}[/yellow]")
-            return ArchiveResult(success=True, doc_id=document.id, file_path=file_path)
+            return ArchiveResult(success=True, doc_id=document.document_id, file_path=file_path)
 
         # Write and commit
         commit_message = f"""Archive: {document.title}
 
-Document ID: {document.id}
-Date: {document.created_at.strftime('%Y-%m-%d')}
+Document ID: {document.document_id}
+Date: {parse_datetime(document.created_at).strftime('%Y-%m-%d')}
 """
         commit_sha = git_manager.write_and_commit(file_path, markdown, commit_message)
 
@@ -167,7 +168,7 @@ Date: {document.created_at.strftime('%Y-%m-%d')}
 
         # Track success
         state_tracker.mark_archived(
-            document_id=document.id,
+            document_id=document.document_id,
             title=document.title,
             created_at=document.created_at,
             updated_at=document.updated_at,
@@ -175,14 +176,14 @@ Date: {document.created_at.strftime('%Y-%m-%d')}
             commit_sha=commit_sha,
         )
 
-        logger.info(f"Successfully archived {document.id} to {file_path}")
+        logger.info(f"Successfully archived {document.document_id} to {file_path}")
         return ArchiveResult(
-            success=True, doc_id=document.id, file_path=file_path, commit_sha=commit_sha
+            success=True, doc_id=document.document_id, file_path=file_path, commit_sha=commit_sha
         )
 
     except Exception as e:
-        logger.error(f"Failed to archive {document.id}: {e}", exc_info=True)
-        return ArchiveResult(success=False, doc_id=document.id, error=str(e))
+        logger.error(f"Failed to archive {document.document_id}: {e}", exc_info=True)
+        return ArchiveResult(success=False, doc_id=document.document_id, error=str(e))
 
 
 async def run_archiver(
@@ -224,8 +225,10 @@ async def run_archiver(
     if document_id:
         # Archive specific document
         logger.info(f"Archiving specific document: {document_id}")
-        doc = await granola_fetcher.fetch_document_details(document_id)
-        documents = [doc.document]
+        doc = await granola_fetcher.fetch_document_by_id(document_id)
+        if not doc:
+            raise ValueError(f"Document {document_id} not found")
+        documents = [doc]
     else:
         # Determine the 'since' timestamp
         if backfill:
@@ -263,8 +266,8 @@ async def run_archiver(
 
     for doc in documents:
         # Check if already archived with same update time
-        if state_tracker.is_archived(doc.id, doc.updated_at):
-            logger.info(f"Skipping {doc.id} - already archived")
+        if state_tracker.is_archived(doc.document_id, doc.updated_at):
+            logger.info(f"Skipping {doc.document_id} - already archived")
             skipped_count += 1
             continue
 
@@ -272,7 +275,7 @@ async def run_archiver(
         if config.filters.min_duration_minutes > 0:
             duration = getattr(doc, "duration_minutes", 0)
             if duration < config.filters.min_duration_minutes:
-                logger.info(f"Skipping {doc.id} - too short ({duration} min)")
+                logger.info(f"Skipping {doc.document_id} - too short ({duration} min)")
                 skipped_count += 1
                 continue
 

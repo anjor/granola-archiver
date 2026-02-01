@@ -110,8 +110,8 @@ class StateTracker:
                 (
                     document_id,
                     title,
-                    created_at.isoformat(),
-                    updated_at.isoformat(),
+                    created_at if isinstance(created_at, str) else created_at.isoformat(),
+                    updated_at if isinstance(updated_at, str) else updated_at.isoformat(),
                     datetime.now().isoformat(),
                     file_path,
                     commit_sha,

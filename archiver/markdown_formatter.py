@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import List
 import logging
 
+from dateutil.parser import parse as parse_datetime
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,9 +27,9 @@ class MarkdownFormatter:
 
         # Extract metadata
         title = document.title or "Untitled Meeting"
-        created_at = document.created_at
-        updated_at = document.updated_at
-        document_id = document.id
+        created_at = parse_datetime(document.created_at)
+        updated_at = parse_datetime(document.updated_at)
+        document_id = document.document_id
         workspace_id = getattr(document, "workspace_id", None)
 
         # Format attendees if available
@@ -108,6 +110,27 @@ archived_at: {datetime.now().isoformat()}"""
 
         return frontmatter + body
 
+    def _get_attendee_name(self, attendee: dict) -> str:
+        """Extract attendee name from potentially nested structure."""
+        # Try direct name first
+        name = attendee.get("name")
+        if name:
+            return name
+
+        # Try nested details.person.name.fullName
+        details = attendee.get("details", {})
+        if details:
+            person = details.get("person", {})
+            if person:
+                name_obj = person.get("name", {})
+                if name_obj:
+                    full_name = name_obj.get("fullName")
+                    if full_name:
+                        return full_name
+
+        # Fall back to email or Unknown
+        return attendee.get("email", "Unknown")
+
     def _format_attendees_yaml(self, attendees: List[dict]) -> str:
         """Format attendees for YAML frontmatter."""
         if not attendees:
@@ -115,7 +138,7 @@ archived_at: {datetime.now().isoformat()}"""
 
         yaml = "attendees:"
         for attendee in attendees:
-            name = attendee.get("name", "Unknown")
+            name = self._get_attendee_name(attendee)
             email = attendee.get("email", "")
             yaml += f'\n  - name: "{name}"'
             if email:
@@ -128,7 +151,7 @@ archived_at: {datetime.now().isoformat()}"""
         if not attendees:
             return ""
 
-        names = [a.get("name", "Unknown") for a in attendees]
+        names = [self._get_attendee_name(a) for a in attendees]
         return ", ".join(names)
 
     def _format_transcript(self, transcript: str) -> str:
@@ -158,7 +181,7 @@ archived_at: {datetime.now().isoformat()}"""
         Returns:
             Relative path like YYYY/MM/YYYY-MM-DD-title.md
         """
-        created_at = document.created_at
+        created_at = parse_datetime(document.created_at)
         title = document.title or "untitled"
 
         # Sanitize title for filename
