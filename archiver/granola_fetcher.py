@@ -52,8 +52,8 @@ class GranolaFetcher:
         """
         logger.info(f"Fetching documents since {since}")
 
-        # Fetch all documents
-        all_documents = await self.client.list_all_documents()
+        # Fetch all documents (list_all_documents returns an async generator)
+        all_documents = [doc async for doc in self.client.list_all_documents()]
 
         # Filter by update time if specified
         if since:
