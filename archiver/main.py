@@ -266,7 +266,7 @@ async def run_archiver(
 
     for doc in documents:
         # Check if already archived with same update time
-        if state_tracker.is_archived(doc.document_id, doc.updated_at):
+        if state_tracker.is_archived(doc.document_id, parse_datetime(doc.updated_at)):
             logger.info(f"Skipping {doc.document_id} - already archived")
             skipped_count += 1
             continue
