@@ -3,7 +3,7 @@
 Automated system to archive Granola meeting transcripts to GitHub.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from .main import main
 
