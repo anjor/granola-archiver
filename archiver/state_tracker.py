@@ -1,7 +1,7 @@
 """SQLite-based state tracker for archived documents."""
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 import logging
@@ -112,7 +112,7 @@ class StateTracker:
                     title,
                     created_at if isinstance(created_at, str) else created_at.isoformat(),
                     updated_at if isinstance(updated_at, str) else updated_at.isoformat(),
-                    datetime.now().isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                     file_path,
                     commit_sha,
                 ),
@@ -136,7 +136,13 @@ class StateTracker:
             row = cursor.fetchone()
 
             if row:
-                return datetime.fromisoformat(row[0])
+                ts = datetime.fromisoformat(row[0])
+                # Legacy rows were written with naive local time. Convert them
+                # to tz-aware UTC so the fetcher's comparison against UTC
+                # document timestamps is correct.
+                if ts.tzinfo is None:
+                    ts = ts.astimezone(timezone.utc)
+                return ts
             return None
 
     def update_last_run(
@@ -158,7 +164,7 @@ class StateTracker:
                 VALUES (?, ?, ?, ?)
                 """,
                 (
-                    datetime.now().isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                     documents_processed,
                     documents_archived,
                     documents_failed,

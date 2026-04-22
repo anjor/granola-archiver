@@ -1,7 +1,7 @@
 """Tests for state_tracker module."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import shutil
@@ -75,7 +75,7 @@ def test_get_last_run_timestamp_returns_none_initially(temp_db):
 def test_update_last_run_records_timestamp(temp_db):
     """Test that update_last_run records a timestamp."""
     tracker = StateTracker(temp_db)
-    before = datetime.now()
+    before = datetime.now(timezone.utc)
 
     tracker.update_last_run(
         documents_processed=5,
@@ -86,6 +86,57 @@ def test_update_last_run_records_timestamp(temp_db):
     last_run = tracker.get_last_run_timestamp()
     assert last_run is not None
     assert last_run >= before
+
+
+def test_last_run_timestamp_is_utc_aware(temp_db):
+    """Last run timestamp must be timezone-aware UTC.
+
+    Regression test: previously stored naive local time, which the fetcher
+    then incorrectly interpreted as UTC — causing new docs to be filtered out
+    whenever the system's local offset was not zero (e.g. BST).
+    """
+    tracker = StateTracker(temp_db)
+    tracker.update_last_run(documents_processed=0, documents_archived=0)
+
+    last_run = tracker.get_last_run_timestamp()
+    assert last_run.tzinfo is not None, "last run timestamp must be tz-aware"
+    assert last_run.utcoffset() == timedelta(0), "last run timestamp must be in UTC"
+
+
+def test_last_run_timestamp_matches_utc_now(temp_db):
+    """Stored timestamp should reflect UTC wall-clock, not local time."""
+    tracker = StateTracker(temp_db)
+    before = datetime.now(timezone.utc)
+    tracker.update_last_run()
+    after = datetime.now(timezone.utc)
+
+    last_run = tracker.get_last_run_timestamp()
+    assert before <= last_run <= after
+
+
+def test_legacy_naive_last_run_is_interpreted_as_local(temp_db):
+    """Existing DBs may contain naive timestamps written before the fix.
+
+    Those were written via datetime.now() (local time) and must be converted
+    to UTC on read, not mis-interpreted as UTC.
+    """
+    import sqlite3
+
+    tracker = StateTracker(temp_db)
+    # Simulate a legacy row: naive local-time isoformat string
+    naive_local = datetime(2026, 4, 22, 15, 0, 0)  # 15:00 local
+    with sqlite3.connect(temp_db) as conn:
+        conn.execute(
+            "INSERT INTO archive_runs (run_at, documents_processed, documents_archived, documents_failed) VALUES (?, 0, 0, 0)",
+            (naive_local.isoformat(),),
+        )
+        conn.commit()
+
+    last_run = tracker.get_last_run_timestamp()
+    assert last_run.tzinfo is not None, "legacy naive rows must be converted to tz-aware"
+    # The UTC equivalent of 15:00 local equals naive_local.astimezone(UTC)
+    expected = naive_local.astimezone(timezone.utc)
+    assert last_run == expected
 
 
 def test_get_archived_count(temp_db):
