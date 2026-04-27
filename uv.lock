@@ -106,7 +106,7 @@ wheels = [
 
 [[package]]
 name = "granola-archiver"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
@@ -139,7 +139,7 @@ dev = [
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0" },
     { name = "gitpython", specifier = ">=3.1" },
-    { name = "granola-client", specifier = ">=0.3.0" },
+    { name = "granola-client", specifier = ">=0.4.0" },
     { name = "httpx", specifier = ">=0.25.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
@@ -162,16 +162,16 @@ dev = [
 
 [[package]]
 name = "granola-client"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "python-dotenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/f3/110f832bfe50901516e119f5c0cf384b04e3192f106fb2f363893d24de9c/granola_client-0.3.0.tar.gz", hash = "sha256:84e6025a6035068bf651847e2b5ed9f6837bf6acf72a11cbd10998d2378c3bcb", size = 27118, upload-time = "2026-01-31T21:01:01.705Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/a7/900a500b918f6818c876e91eb384f5693fea0ac9ad59e876455a27246b90/granola_client-0.4.0.tar.gz", hash = "sha256:b1f558ce34b9d89bd83bb5a7e4c16f0f800ece44bd0b80d96707fac6ea45f3d4", size = 40143, upload-time = "2026-04-27T13:44:27.285Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/74/d76fbe5e5cdfefe8438605555f1c94243661deaeb6db8fa9dfaf6399bf3f/granola_client-0.3.0-py3-none-any.whl", hash = "sha256:827489ec15805b43d6ed8ef63f706e1ddeb73263d02b1ab7b5a4773386a136a6", size = 16947, upload-time = "2026-01-31T21:01:00.479Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/9b/6a78d20f4a1c11eef4422e66d9a13742ad52b074ce7e40e39076d890576d/granola_client-0.4.0-py3-none-any.whl", hash = "sha256:26daf5ca43877f24f28c2ce12d300488b2e72b2a9dd48169648be293914ca6ce", size = 23816, upload-time = "2026-04-27T13:44:26.025Z" },
 ]
 
 [[package]]
