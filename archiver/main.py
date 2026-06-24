@@ -22,6 +22,7 @@ from .state_tracker import StateTracker
 from .granola_fetcher import GranolaFetcher
 from .markdown_formatter import MarkdownFormatter
 from .git_manager import GitManager
+from .notifications import notify_macos
 
 # Load environment variables
 load_dotenv()
@@ -115,6 +116,61 @@ def load_config(config_path: Optional[str] = None) -> ArchiverConfig:
         config_dict = yaml.safe_load(f)
 
     return ArchiverConfig(**config_dict)
+
+
+ALERT_ATTEMPT_THRESHOLD = 3
+
+
+def documents_needing_alert(pending_documents, attempt_threshold: int = ALERT_ATTEMPT_THRESHOLD):
+    """Return pending documents that have failed enough times to warrant an alert.
+
+    Args:
+        pending_documents: Rows from ``StateTracker.get_pending_documents()``.
+        attempt_threshold: Number of failed attempts at which to alert.
+
+    Returns:
+        The subset of pending documents with ``attempts >= attempt_threshold``.
+    """
+    return [p for p in pending_documents if p["attempts"] >= attempt_threshold]
+
+
+def maybe_alert_failures(
+    state_tracker: StateTracker,
+    notifier=None,
+    attempt_threshold: int = ALERT_ATTEMPT_THRESHOLD,
+):
+    """Notify when documents have been failing to archive across multiple runs.
+
+    Keeps the archiver from silently failing for days: once a document has
+    failed ``attempt_threshold`` times it surfaces a local notification.
+
+    Args:
+        state_tracker: State tracker holding the retry queue.
+        notifier: Callable ``(title, message)`` used to deliver the alert.
+            Defaults to a macOS notification.
+        attempt_threshold: Number of failed attempts at which to alert.
+
+    Returns:
+        The list of pending documents that triggered the alert (possibly empty).
+    """
+    if notifier is None:
+        notifier = notify_macos
+
+    alerting = documents_needing_alert(
+        state_tracker.get_pending_documents(), attempt_threshold
+    )
+    if not alerting:
+        return []
+
+    ids = ", ".join(d["document_id"] for d in alerting)
+    last_error = alerting[0].get("last_error") or "unknown error"
+    message = (
+        f"{len(alerting)} document(s) failing to archive (e.g. {ids}). "
+        f"Last error: {last_error}"
+    )
+    notifier("Granola archiver: archiving is failing", message)
+    logging.getLogger(__name__).warning(message)
+    return alerting
 
 
 def pending_ids_to_fetch(fetched_documents, pending_documents) -> list[str]:
@@ -365,6 +421,9 @@ async def run_archiver(
             documents_archived=archived_count,
             documents_failed=failed_count,
         )
+
+        # Surface sustained failures so they don't go unnoticed for days.
+        maybe_alert_failures(state_tracker)
 
     # Build summary
     summary = ArchiveSummary(
