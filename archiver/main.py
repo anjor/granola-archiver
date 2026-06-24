@@ -117,6 +117,49 @@ def load_config(config_path: Optional[str] = None) -> ArchiverConfig:
     return ArchiverConfig(**config_dict)
 
 
+def pending_ids_to_fetch(fetched_documents, pending_documents) -> list[str]:
+    """Return pending document IDs that were not already fetched this run.
+
+    Documents that previously failed to archive sit in the retry queue. The
+    watermark may have advanced past their ``updated_at``, so they won't appear
+    in the normal fetch window and must be re-fetched explicitly. Any pending
+    doc already present in the window is skipped to avoid a duplicate fetch.
+
+    Args:
+        fetched_documents: Documents returned by the watermark-based fetch
+            (each has a ``document_id`` attribute).
+        pending_documents: Rows from ``StateTracker.get_pending_documents()``.
+
+    Returns:
+        Document IDs to additionally fetch, preserving queue order.
+    """
+    already_fetched = {doc.document_id for doc in fetched_documents}
+    return [p["document_id"] for p in pending_documents if p["document_id"] not in already_fetched]
+
+
+def record_archive_outcome(
+    state_tracker: StateTracker, document, result: ArchiveResult, dry_run: bool = False
+):
+    """Update the retry queue based on the outcome of archiving a document.
+
+    On success the document is cleared from the queue; on failure it is queued
+    (or re-queued, incrementing its attempt count) for retry on a later run.
+    Dry runs never mutate state.
+
+    Args:
+        state_tracker: State tracker holding the retry queue.
+        document: The document that was processed.
+        result: The archive result.
+        dry_run: If True, do nothing.
+    """
+    if dry_run:
+        return
+    if result.success:
+        state_tracker.clear_pending(document.document_id)
+    else:
+        state_tracker.mark_pending(document.document_id, document.updated_at, result.error)
+
+
 async def archive_document(
     document,
     granola_fetcher: GranolaFetcher,
@@ -256,9 +299,30 @@ async def run_archiver(
 
         # Fetch documents
         workspace_ids = config.filters.workspace_ids if config.filters.workspace_ids else None
-        documents = await granola_fetcher.fetch_new_documents(
-            since=fetch_since, workspace_ids=workspace_ids
+        documents = list(
+            await granola_fetcher.fetch_new_documents(
+                since=fetch_since, workspace_ids=workspace_ids
+            )
         )
+
+        # Also retry documents that previously failed to archive. The watermark
+        # may have advanced past their updated_at, so they won't appear in the
+        # fetch window above and must be re-fetched explicitly by ID.
+        retry_ids = pending_ids_to_fetch(documents, state_tracker.get_pending_documents())
+        if retry_ids:
+            logger.info(f"Retrying {len(retry_ids)} previously failed document(s)")
+            for doc_id in retry_ids:
+                try:
+                    retry_doc = await granola_fetcher.fetch_document_by_id(doc_id)
+                except Exception as e:
+                    logger.warning(f"Could not re-fetch pending document {doc_id}: {e}")
+                    continue
+                if retry_doc:
+                    documents.append(retry_doc)
+                else:
+                    logger.warning(
+                        f"Pending document {doc_id} no longer available from Granola"
+                    )
 
     # Process documents
     results = []
@@ -284,6 +348,7 @@ async def run_archiver(
             doc, granola_fetcher, formatter, git_manager, state_tracker, dry_run
         )
         results.append(result)
+        record_archive_outcome(state_tracker, doc, result, dry_run)
 
     # Push commits (unless dry run)
     if not dry_run and any(r.success for r in results):
