@@ -1,6 +1,7 @@
 """Git operations for archiving documents."""
 
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +11,12 @@ except ImportError:
     raise ImportError("GitPython not installed. Install with: pip install gitpython")
 
 logger = logging.getLogger(__name__)
+
+# A git index.lock older than this is treated as stale (left by an interrupted
+# process) and safe to remove. The archiver runs briefly every ~30 min, so any
+# lock surviving this long is not from a live run. Kept conservative to avoid
+# racing a legitimate concurrent git operation.
+STALE_LOCK_SECONDS = 300
 
 
 class GitManager:
@@ -74,19 +81,59 @@ class GitManager:
             full_path.write_text(content, encoding="utf-8")
             logger.info(f"Wrote file: {file_path}")
 
-            # Stage file
-            self.repo.index.add([file_path])
-
-            # Commit
-            commit = self.repo.index.commit(commit_message)
-            commit_sha = commit.hexsha
-            logger.info(f"Committed {file_path} with SHA {commit_sha[:8]}")
-
-            return commit_sha
+            # Write succeeded; staging + committing may hit a stale lock.
+            return self._stage_and_commit(file_path, commit_message)
 
         except Exception as e:
             logger.error(f"Failed to write and commit {file_path}: {e}")
             return None
+
+    def _stage_and_commit(self, file_path: str, commit_message: str) -> Optional[str]:
+        """Stage and commit a written file, recovering from a stale index.lock.
+
+        If the commit fails and a *stale* lock is present, the lock is removed
+        and the commit is retried once. A fresh lock is left untouched, since it
+        may belong to a live git process.
+        """
+        try:
+            self.repo.index.add([file_path])
+            commit = self.repo.index.commit(commit_message)
+            logger.info(f"Committed {file_path} with SHA {commit.hexsha[:8]}")
+            return commit.hexsha
+        except Exception as e:
+            if not self._clear_stale_lock():
+                raise
+            logger.warning(f"Cleared stale git lock; retrying commit of {file_path} (was: {e})")
+            self.repo.index.add([file_path])
+            commit = self.repo.index.commit(commit_message)
+            logger.info(f"Committed {file_path} with SHA {commit.hexsha[:8]}")
+            return commit.hexsha
+
+    def _clear_stale_lock(self) -> bool:
+        """Remove the repo's index.lock if it is stale.
+
+        Returns:
+            True if a stale lock was found and removed, False otherwise.
+        """
+        lock_path = Path(self.repo.git_dir) / "index.lock"
+        if not lock_path.exists():
+            return False
+
+        age = time.time() - lock_path.stat().st_mtime
+        if age < STALE_LOCK_SECONDS:
+            logger.warning(
+                f"index.lock present but only {age:.0f}s old; leaving it "
+                "(may be a live git process)"
+            )
+            return False
+
+        try:
+            lock_path.unlink()
+            logger.warning(f"Removed stale index.lock ({age:.0f}s old) at {lock_path}")
+            return True
+        except OSError as e:
+            logger.error(f"Could not remove stale index.lock: {e}")
+            return False
 
     def push_to_remote(self) -> bool:
         """Push all commits to the remote repository.

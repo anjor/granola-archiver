@@ -139,6 +139,57 @@ def test_legacy_naive_last_run_is_interpreted_as_local(temp_db):
     assert last_run == expected
 
 
+def test_get_pending_documents_empty_initially(temp_db):
+    """No documents are pending on a fresh database."""
+    tracker = StateTracker(temp_db)
+    assert tracker.get_pending_documents() == []
+
+
+def test_mark_pending_records_document(temp_db):
+    """A failed document is recorded in the pending queue for retry."""
+    tracker = StateTracker(temp_db)
+    updated_at = datetime.now(timezone.utc)
+
+    tracker.mark_pending("doc_123", updated_at, error="commit failed")
+
+    pending = tracker.get_pending_documents()
+    assert [p["document_id"] for p in pending] == ["doc_123"]
+    assert pending[0]["attempts"] == 1
+    assert pending[0]["last_error"] == "commit failed"
+
+
+def test_mark_pending_increments_attempts(temp_db):
+    """Re-failing the same document increments its attempt count."""
+    tracker = StateTracker(temp_db)
+    updated_at = datetime.now(timezone.utc)
+
+    tracker.mark_pending("doc_123", updated_at, error="first failure")
+    tracker.mark_pending("doc_123", updated_at, error="second failure")
+
+    pending = tracker.get_pending_documents()
+    assert len(pending) == 1
+    assert pending[0]["attempts"] == 2
+    assert pending[0]["last_error"] == "second failure"
+
+
+def test_clear_pending_removes_document(temp_db):
+    """Once successfully archived, a document is removed from the queue."""
+    tracker = StateTracker(temp_db)
+    updated_at = datetime.now(timezone.utc)
+    tracker.mark_pending("doc_123", updated_at, error="commit failed")
+
+    tracker.clear_pending("doc_123")
+
+    assert tracker.get_pending_documents() == []
+
+
+def test_clear_pending_is_safe_for_unknown_document(temp_db):
+    """Clearing a document that was never pending is a no-op, not an error."""
+    tracker = StateTracker(temp_db)
+    tracker.clear_pending("never_seen")  # should not raise
+    assert tracker.get_pending_documents() == []
+
+
 def test_get_archived_count(temp_db):
     """Test that get_archived_count returns correct count."""
     tracker = StateTracker(temp_db)

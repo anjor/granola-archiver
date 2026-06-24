@@ -22,6 +22,7 @@ from .state_tracker import StateTracker
 from .granola_fetcher import GranolaFetcher
 from .markdown_formatter import MarkdownFormatter
 from .git_manager import GitManager
+from .notifications import notify_macos
 
 # Load environment variables
 load_dotenv()
@@ -115,6 +116,101 @@ def load_config(config_path: Optional[str] = None) -> ArchiverConfig:
         config_dict = yaml.safe_load(f)
 
     return ArchiverConfig(**config_dict)
+
+
+ALERT_ATTEMPT_THRESHOLD = 3
+
+
+def documents_needing_alert(pending_documents, attempt_threshold: int = ALERT_ATTEMPT_THRESHOLD):
+    """Return pending documents that have failed enough times to warrant an alert.
+
+    Args:
+        pending_documents: Rows from ``StateTracker.get_pending_documents()``.
+        attempt_threshold: Number of failed attempts at which to alert.
+
+    Returns:
+        The subset of pending documents with ``attempts >= attempt_threshold``.
+    """
+    return [p for p in pending_documents if p["attempts"] >= attempt_threshold]
+
+
+def maybe_alert_failures(
+    state_tracker: StateTracker,
+    notifier=None,
+    attempt_threshold: int = ALERT_ATTEMPT_THRESHOLD,
+):
+    """Notify when documents have been failing to archive across multiple runs.
+
+    Keeps the archiver from silently failing for days: once a document has
+    failed ``attempt_threshold`` times it surfaces a local notification.
+
+    Args:
+        state_tracker: State tracker holding the retry queue.
+        notifier: Callable ``(title, message)`` used to deliver the alert.
+            Defaults to a macOS notification.
+        attempt_threshold: Number of failed attempts at which to alert.
+
+    Returns:
+        The list of pending documents that triggered the alert (possibly empty).
+    """
+    if notifier is None:
+        notifier = notify_macos
+
+    alerting = documents_needing_alert(state_tracker.get_pending_documents(), attempt_threshold)
+    if not alerting:
+        return []
+
+    ids = ", ".join(d["document_id"] for d in alerting)
+    last_error = alerting[0].get("last_error") or "unknown error"
+    message = (
+        f"{len(alerting)} document(s) failing to archive (e.g. {ids}). " f"Last error: {last_error}"
+    )
+    notifier("Granola archiver: archiving is failing", message)
+    logging.getLogger(__name__).warning(message)
+    return alerting
+
+
+def pending_ids_to_fetch(fetched_documents, pending_documents) -> list[str]:
+    """Return pending document IDs that were not already fetched this run.
+
+    Documents that previously failed to archive sit in the retry queue. The
+    watermark may have advanced past their ``updated_at``, so they won't appear
+    in the normal fetch window and must be re-fetched explicitly. Any pending
+    doc already present in the window is skipped to avoid a duplicate fetch.
+
+    Args:
+        fetched_documents: Documents returned by the watermark-based fetch
+            (each has a ``document_id`` attribute).
+        pending_documents: Rows from ``StateTracker.get_pending_documents()``.
+
+    Returns:
+        Document IDs to additionally fetch, preserving queue order.
+    """
+    already_fetched = {doc.document_id for doc in fetched_documents}
+    return [p["document_id"] for p in pending_documents if p["document_id"] not in already_fetched]
+
+
+def record_archive_outcome(
+    state_tracker: StateTracker, document, result: ArchiveResult, dry_run: bool = False
+):
+    """Update the retry queue based on the outcome of archiving a document.
+
+    On success the document is cleared from the queue; on failure it is queued
+    (or re-queued, incrementing its attempt count) for retry on a later run.
+    Dry runs never mutate state.
+
+    Args:
+        state_tracker: State tracker holding the retry queue.
+        document: The document that was processed.
+        result: The archive result.
+        dry_run: If True, do nothing.
+    """
+    if dry_run:
+        return
+    if result.success:
+        state_tracker.clear_pending(document.document_id)
+    else:
+        state_tracker.mark_pending(document.document_id, document.updated_at, result.error)
 
 
 async def archive_document(
@@ -256,9 +352,28 @@ async def run_archiver(
 
         # Fetch documents
         workspace_ids = config.filters.workspace_ids if config.filters.workspace_ids else None
-        documents = await granola_fetcher.fetch_new_documents(
-            since=fetch_since, workspace_ids=workspace_ids
+        documents = list(
+            await granola_fetcher.fetch_new_documents(
+                since=fetch_since, workspace_ids=workspace_ids
+            )
         )
+
+        # Also retry documents that previously failed to archive. The watermark
+        # may have advanced past their updated_at, so they won't appear in the
+        # fetch window above and must be re-fetched explicitly by ID.
+        retry_ids = pending_ids_to_fetch(documents, state_tracker.get_pending_documents())
+        if retry_ids:
+            logger.info(f"Retrying {len(retry_ids)} previously failed document(s)")
+            for doc_id in retry_ids:
+                try:
+                    retry_doc = await granola_fetcher.fetch_document_by_id(doc_id)
+                except Exception as e:
+                    logger.warning(f"Could not re-fetch pending document {doc_id}: {e}")
+                    continue
+                if retry_doc:
+                    documents.append(retry_doc)
+                else:
+                    logger.warning(f"Pending document {doc_id} no longer available from Granola")
 
     # Process documents
     results = []
@@ -284,6 +399,7 @@ async def run_archiver(
             doc, granola_fetcher, formatter, git_manager, state_tracker, dry_run
         )
         results.append(result)
+        record_archive_outcome(state_tracker, doc, result, dry_run)
 
     # Push commits (unless dry run)
     if not dry_run and any(r.success for r in results):
@@ -300,6 +416,9 @@ async def run_archiver(
             documents_archived=archived_count,
             documents_failed=failed_count,
         )
+
+        # Surface sustained failures so they don't go unnoticed for days.
+        maybe_alert_failures(state_tracker)
 
     # Build summary
     summary = ArchiveSummary(
