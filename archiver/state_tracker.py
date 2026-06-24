@@ -191,9 +191,7 @@ class StateTracker:
             conn.commit()
             logger.info(f"Updated last run: {documents_archived}/{documents_processed} archived")
 
-    def mark_pending(
-        self, document_id: str, updated_at: datetime, error: Optional[str] = None
-    ):
+    def mark_pending(self, document_id: str, updated_at: datetime, error: Optional[str] = None):
         """Record a document that failed to archive so it is retried later.
 
         Idempotent per document: re-recording the same document increments its
@@ -231,9 +229,7 @@ class StateTracker:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "DELETE FROM pending_documents WHERE document_id = ?", (document_id,)
-            )
+            cursor.execute("DELETE FROM pending_documents WHERE document_id = ?", (document_id,))
             conn.commit()
 
     def get_pending_documents(self) -> list[dict]:
@@ -245,13 +241,11 @@ class StateTracker:
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT document_id, updated_at, first_failed_at, last_error, attempts
                 FROM pending_documents
                 ORDER BY first_failed_at ASC
-                """
-            )
+                """)
             return [
                 {
                     "document_id": row[0],

@@ -156,17 +156,14 @@ def maybe_alert_failures(
     if notifier is None:
         notifier = notify_macos
 
-    alerting = documents_needing_alert(
-        state_tracker.get_pending_documents(), attempt_threshold
-    )
+    alerting = documents_needing_alert(state_tracker.get_pending_documents(), attempt_threshold)
     if not alerting:
         return []
 
     ids = ", ".join(d["document_id"] for d in alerting)
     last_error = alerting[0].get("last_error") or "unknown error"
     message = (
-        f"{len(alerting)} document(s) failing to archive (e.g. {ids}). "
-        f"Last error: {last_error}"
+        f"{len(alerting)} document(s) failing to archive (e.g. {ids}). " f"Last error: {last_error}"
     )
     notifier("Granola archiver: archiving is failing", message)
     logging.getLogger(__name__).warning(message)
@@ -376,9 +373,7 @@ async def run_archiver(
                 if retry_doc:
                     documents.append(retry_doc)
                 else:
-                    logger.warning(
-                        f"Pending document {doc_id} no longer available from Granola"
-                    )
+                    logger.warning(f"Pending document {doc_id} no longer available from Granola")
 
     # Process documents
     results = []
