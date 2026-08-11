@@ -65,6 +65,21 @@ class StateTracker:
                 )
             """)
 
+            # Create run_health table: tracks runs that failed outright, before
+            # any document could be queued. pending_documents cannot represent
+            # those, so without this an auth or network break stays invisible.
+            # Single row, pinned to id = 1.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS run_health (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    last_failure_at TEXT,
+                    last_alert_at TEXT
+                )
+            """)
+            cursor.execute("INSERT OR IGNORE INTO run_health (id) VALUES (1)")
+
             conn.commit()
 
     def is_archived(self, document_id: str, updated_at: datetime) -> bool:
@@ -162,6 +177,88 @@ class StateTracker:
                     ts = ts.astimezone(timezone.utc)
                 return ts
             return None
+
+    def record_run_failure(self, error: str, when: Optional[datetime] = None) -> int:
+        """Record that an entire run failed, and return the new streak length.
+
+        Args:
+            error: The error that killed the run.
+            when: Failure time; defaults to now.
+
+        Returns:
+            The number of consecutive failed runs, including this one.
+        """
+        when = when or datetime.now(timezone.utc)
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE run_health
+                SET consecutive_failures = consecutive_failures + 1,
+                    last_error = ?,
+                    last_failure_at = ?
+                WHERE id = 1
+                """,
+                (error, when.isoformat()),
+            )
+            conn.commit()
+            cursor.execute("SELECT consecutive_failures FROM run_health WHERE id = 1")
+            return cursor.fetchone()[0]
+
+    def clear_run_failures(self):
+        """Reset run health after a run completes. Safe to call when healthy."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                UPDATE run_health
+                SET consecutive_failures = 0,
+                    last_error = NULL,
+                    last_failure_at = NULL,
+                    last_alert_at = NULL
+                WHERE id = 1
+                """)
+            conn.commit()
+
+    def mark_run_alert_sent(self, when: Optional[datetime] = None):
+        """Record that a run-failure alert was delivered, for cooldown purposes."""
+        when = when or datetime.now(timezone.utc)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE run_health SET last_alert_at = ? WHERE id = 1", (when.isoformat(),)
+            )
+            conn.commit()
+
+    def get_run_health(self) -> dict:
+        """Return the current run-failure streak.
+
+        Returns:
+            Dict with ``consecutive_failures``, ``last_error``,
+            ``last_failure_at`` and ``last_alert_at``.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT consecutive_failures, last_error, last_failure_at, last_alert_at
+                FROM run_health WHERE id = 1
+                """)
+            row = cursor.fetchone()
+
+        if row is None:  # pragma: no cover - the row is seeded at init
+            return {
+                "consecutive_failures": 0,
+                "last_error": None,
+                "last_failure_at": None,
+                "last_alert_at": None,
+            }
+
+        def _parse(value: Optional[str]) -> Optional[datetime]:
+            return datetime.fromisoformat(value) if value else None
+
+        return {
+            "consecutive_failures": row[0],
+            "last_error": row[1],
+            "last_failure_at": _parse(row[2]),
+            "last_alert_at": _parse(row[3]),
+        }
 
     def update_last_run(
         self, documents_processed: int = 0, documents_archived: int = 0, documents_failed: int = 0

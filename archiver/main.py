@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +23,7 @@ from .granola_fetcher import GranolaFetcher
 from .markdown_formatter import MarkdownFormatter
 from .git_manager import GitManager
 from .notifications import notify_macos
+from .run_health import DEFAULT_ALERT_COOLDOWN, format_failure_message, should_alert
 
 # Load environment variables
 load_dotenv()
@@ -120,6 +121,9 @@ def load_config(config_path: Optional[str] = None) -> ArchiverConfig:
 
 ALERT_ATTEMPT_THRESHOLD = 3
 
+# Relative to the working directory, which launchd pins to the repo root.
+STATE_DB_PATH = "state/archive_state.db"
+
 
 def documents_needing_alert(pending_documents, attempt_threshold: int = ALERT_ATTEMPT_THRESHOLD):
     """Return pending documents that have failed enough times to warrant an alert.
@@ -168,6 +172,99 @@ def maybe_alert_failures(
     notifier("Granola archiver: archiving is failing", message)
     logging.getLogger(__name__).warning(message)
     return alerting
+
+
+def alert_run_failure(
+    state_tracker: StateTracker,
+    error: str,
+    notifier=None,
+    now: Optional[datetime] = None,
+    cooldown: timedelta = DEFAULT_ALERT_COOLDOWN,
+) -> bool:
+    """Record a run-level failure and alert unless we alerted recently.
+
+    ``maybe_alert_failures`` only sees documents that made it into the retry
+    queue. A run that dies at auth, network or git never gets that far, so
+    without this the failure is visible only in the log.
+
+    Args:
+        state_tracker: Tracker holding the run-health row.
+        error: Description of what killed the run.
+        notifier: Callable ``(title, message)``; defaults to a macOS notification.
+        now: Current time, for cooldown arithmetic.
+        cooldown: Minimum gap between repeat alerts.
+
+    Returns:
+        True if an alert was delivered.
+    """
+    if notifier is None:
+        notifier = notify_macos
+    now = now or datetime.now(timezone.utc)
+    logger = logging.getLogger(__name__)
+
+    consecutive = state_tracker.record_run_failure(error, now)
+    health = state_tracker.get_run_health()
+
+    if not should_alert(consecutive, health["last_alert_at"], now, cooldown):
+        logger.warning(
+            f"Archiver run failed ({consecutive} consecutive); "
+            f"alert suppressed by cooldown. {error}"
+        )
+        return False
+
+    message = format_failure_message(
+        consecutive_failures=consecutive,
+        error=error,
+        last_success=state_tracker.get_last_run_timestamp(),
+        now=now,
+    )
+    logger.error(message)
+
+    # Best-effort: a broken notifier must not become a second failure mode.
+    try:
+        notifier("Granola archiver: runs are failing", message)
+    except Exception as e:  # pragma: no cover - environment dependent
+        logger.warning(f"Could not deliver run-failure alert: {e}")
+
+    state_tracker.mark_run_alert_sent(now)
+    return True
+
+
+def run_with_health_tracking(
+    state_tracker: StateTracker,
+    runner,
+    notifier=None,
+    now: Optional[datetime] = None,
+    cooldown: timedelta = DEFAULT_ALERT_COOLDOWN,
+):
+    """Run ``runner``, tracking whether the run as a whole succeeded.
+
+    Args:
+        state_tracker: Tracker holding the run-health row.
+        runner: Zero-argument callable performing the run.
+        notifier: Callable ``(title, message)`` for alerts.
+        now: Current time, for cooldown arithmetic.
+        cooldown: Minimum gap between repeat alerts.
+
+    Returns:
+        Whatever ``runner`` returns.
+
+    Raises:
+        Whatever ``runner`` raises, after recording and alerting.
+    """
+    try:
+        result = runner()
+    except KeyboardInterrupt:
+        # An interactive Ctrl-C is not an outage.
+        raise
+    except Exception as e:
+        alert_run_failure(
+            state_tracker, f"{type(e).__name__}: {e}", notifier=notifier, now=now, cooldown=cooldown
+        )
+        raise
+
+    state_tracker.clear_run_failures()
+    return result
 
 
 def pending_ids_to_fetch(fetched_documents, pending_documents) -> list[str]:
@@ -307,7 +404,7 @@ async def run_archiver(
     # Initialize components
     token = os.getenv(config.granola.token_env) if not config.granola.auto_detect_token else None
     granola_fetcher = GranolaFetcher(token=token)
-    state_tracker = StateTracker("state/archive_state.db")
+    state_tracker = StateTracker(STATE_DB_PATH)
     git_manager = GitManager(
         config.archive.repo_path, config.archive.remote_name, config.archive.default_branch
     )
@@ -511,6 +608,9 @@ def main():
         init_config(force=args.force)
         return
 
+    # Created before the config is read so that a broken config alerts too.
+    health_tracker = StateTracker(STATE_DB_PATH)
+
     try:
         # Load configuration
         config = load_config(args.config)
@@ -518,15 +618,21 @@ def main():
         # Setup logging
         setup_logging(config)
 
-        # Run archiver
-        summary = asyncio.run(
-            run_archiver(
-                config,
-                dry_run=args.dry_run,
-                document_id=args.document_id,
-                backfill=args.backfill,
-                since_date=args.since,
-            )
+        # Run archiver. Wrapped so that a failure killing the whole run —
+        # expired credentials, no network, a wedged repo — raises an alert.
+        # Those never reach the per-document retry queue, and so went
+        # unnoticed for six days in August 2026.
+        summary = run_with_health_tracking(
+            health_tracker,
+            lambda: asyncio.run(
+                run_archiver(
+                    config,
+                    dry_run=args.dry_run,
+                    document_id=args.document_id,
+                    backfill=args.backfill,
+                    since_date=args.since,
+                )
+            ),
         )
 
         # Print summary
