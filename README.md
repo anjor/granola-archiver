@@ -238,9 +238,20 @@ granola-transcripts/
 
 ```yaml
 granola:
-  auto_detect_token: true  # Auto-detect from ~/.granola/credentials.json
-  token_env: GRANOLA_TOKEN  # Or use environment variable
+  auto_detect_token: true    # Read the desktop app's local session file
+  token_env: GRANOLA_TOKEN   # Env var holding an explicit token
 ```
+
+Token resolution order:
+
+1. If `$GRANOLA_TOKEN` (or whatever `token_env` names) is set and non-empty, that
+   token is used. This works regardless of how the desktop app stores its session.
+2. Otherwise, if `auto_detect_token` is `true`, the client reads the desktop app's
+   local session file.
+3. Otherwise the run fails immediately, rather than silently falling back to (2).
+
+See [Authentication](#authentication) for which of these actually works on
+current Granola versions.
 
 ### Filtering
 
@@ -289,6 +300,25 @@ The archiver is designed to be resilient:
 
 Errors are logged to both console and `/tmp/granola-archiver.log`.
 
+### Failure alerts
+
+Two alerts exist, covering two different failure shapes:
+
+- **Per-document**: once a document has failed to archive 3 times, the retry
+  queue fires a macOS notification naming it.
+- **Run-level**: if a run dies *before* reaching any document (auth, config,
+  network), the retry queue is still empty and the per-document alert cannot
+  fire. That case now sends its own macOS notification and writes a one-line
+  marker to `~/.local/state/granola-archiver/LAST_FAILURE`:
+
+  ```bash
+  cat ~/.local/state/granola-archiver/LAST_FAILURE
+  ```
+
+  The marker means "the most recent run failed"; a later successful run removes
+  it. Its absence is therefore a positive signal, which makes it usable as a
+  cheap health check from cron, a status bar, or a monitoring script.
+
 ## Troubleshooting
 
 ### "Configuration file not found"
@@ -307,9 +337,52 @@ Reinstall dependencies:
 uv sync
 ```
 
-### "Authentication failed"
+### Authentication
 
-Ensure Granola credentials exist at `~/.granola/credentials.json` or set `GRANOLA_TOKEN` environment variable.
+#### "Granola token file not found: .../supabase.json"
+
+On macOS, `granola-client` authenticates by reading the desktop app's session
+from `~/Library/Application Support/Granola/supabase.json`.
+
+**Granola 7.x encrypts that file.** The app now writes `supabase.json.enc`, and
+the plaintext path no longer exists, so automatic token detection cannot work —
+signing in again will not recreate it. The archiver detects this specific state
+and says so, instead of repeating the library's misleading "open the desktop app
+to sign in" advice.
+
+Supported ways out, in order of preference:
+
+1. **Official public API** — Granola ships a REST API at
+   `https://public-api.granola.ai/v1` using `Authorization: Bearer grn_...`
+   keys created in the desktop app under **Settings → Connectors → API keys**.
+   This is the vendor-sanctioned path and is indifferent to how the app stores
+   its local session. Note that key creation currently requires a **Business**
+   plan, and the API only returns notes that already have a generated summary
+   and transcript.
+
+2. **Explicit token** — set `auto_detect_token: false` and export a token:
+
+   ```yaml
+   granola:
+     auto_detect_token: false
+     token_env: GRANOLA_TOKEN
+   ```
+
+   ```bash
+   export GRANOLA_TOKEN='...'
+   ```
+
+   For launchd, add it to the `EnvironmentVariables` dict in
+   `~/Library/LaunchAgents/com.granola.archiver.plist` (note that the plist is
+   world-readable, so prefer `chmod 600` on it).
+
+   **Rotation:** tokens carry an `expires_in` and must be replaced when they
+   expire; the archiver refreshes a token it was given only for the lifetime of
+   a single run. A `grn_` API key from route 1 does not expire and is the better
+   choice for an unattended agent.
+
+Do **not** attempt to decrypt `supabase.json.enc`. It is undocumented, and it
+breaks on the next app update.
 
 ### Launchd job not running
 

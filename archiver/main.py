@@ -16,13 +16,14 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
 
+from .auth import resolve_token
 from .cli import get_user_config_path, init_config
 from .models import ArchiverConfig, ArchiveResult, ArchiveSummary
 from .state_tracker import StateTracker
 from .granola_fetcher import GranolaFetcher
 from .markdown_formatter import MarkdownFormatter
 from .git_manager import GitManager
-from .notifications import notify_macos
+from .notifications import clear_run_failure, notify_macos, record_run_failure
 
 # Load environment variables
 load_dotenv()
@@ -304,9 +305,9 @@ async def run_archiver(
     logger = logging.getLogger(__name__)
     logger.info("Starting archiver run")
 
-    # Initialize components
-    token = os.getenv(config.granola.token_env) if not config.granola.auto_detect_token else None
-    granola_fetcher = GranolaFetcher(token=token)
+    # Initialize components. resolve_token fails loudly rather than silently
+    # falling back to the local-file path when a token was meant to be supplied.
+    granola_fetcher = GranolaFetcher(token=resolve_token(config.granola))
     state_tracker = StateTracker("state/archive_state.db")
     git_manager = GitManager(
         config.archive.repo_path, config.archive.remote_name, config.archive.default_branch
@@ -532,6 +533,10 @@ def main():
         # Print summary
         print_summary(summary)
 
+        # The run itself completed, so any earlier run-level failure is resolved.
+        # Per-document failures stay tracked by the retry queue and its own alert.
+        clear_run_failure()
+
         # Exit with error code if any documents failed
         sys.exit(0 if summary.failed_count == 0 else 1)
 
@@ -539,8 +544,12 @@ def main():
         console.print("\n[yellow]Interrupted by user[/yellow]")
         sys.exit(130)
     except Exception as e:
+        # A run that dies here never reached a document, so the retry queue is
+        # empty and its per-document alert cannot fire. Alert at run level so
+        # auth/config/network breakage is not silent.
         console.print(f"[red]Fatal error: {e}[/red]")
         logging.exception("Fatal error")
+        record_run_failure(e)
         sys.exit(1)
 
 
