@@ -7,9 +7,11 @@ from typing import List, Optional
 from dateutil.parser import parse as parse_datetime
 
 try:
-    from granola_client import GranolaClient, Document
+    from granola_client import Document
 except ImportError:
     raise ImportError("granola-client not found. Install with: uv add granola-client")
+
+from .auth import ArchiverGranolaClient
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +35,12 @@ class GranolaFetcher:
             token: Optional API token. If not provided, will auto-detect.
         """
         if token:
-            self.client = GranolaClient(token=token)
+            self.client = ArchiverGranolaClient(token=token)
         else:
-            # Auto-detect token from environment or credentials file
-            self.client = GranolaClient()
+            # Auto-detect token from the desktop app's local session file.
+            # ArchiverGranolaClient re-frames the failure when that file is
+            # encrypted, which upstream reports as a misleading "not found".
+            self.client = ArchiverGranolaClient()
 
         logger.info("Initialized Granola client")
 
